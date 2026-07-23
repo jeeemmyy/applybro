@@ -221,6 +221,27 @@ def start_session(url: str, cfg: Config, threshold: int,
                     stack.extend(node.values())
             if desc:
                 break
+    # Still thin, or the page never rendered a title (client-rendered ATS
+    # postings often haven't hydrated when the panel reads them — a Greenhouse
+    # job showed an empty title and description, user report 2026-07-24)?
+    # If this posting lives on a KNOWN ATS board, ask its public API — clean
+    # title/company/description, the same "ATS API first" rule scans follow.
+    # Only the fast API path runs here (generic URLs return None instantly), so
+    # starting a session never blocks on a full browser fetch. General to any
+    # Greenhouse/Lever/Ashby/… posting, never a per-site branch.
+    if len(desc) < 200 or not who["title"]:
+        try:
+            from ..discovery.single_job import _job_from_ats_board, _company_fallback
+            j = _job_from_ats_board(_company_fallback(url), url, cfg)
+        except Exception:
+            j = None
+        if j:
+            if len((j.description or "").strip()) > len(desc):
+                desc = " ".join((j.description or "").split())[:20000]
+            if not who["title"] and (j.title or "").strip():
+                who["title"] = j.title.strip()[:160]
+            if not who["company"] and (j.company or "").strip():
+                who["company"] = j.company.strip()[:120]
     _set_session({"url": url,
                   "title": " — ".join([x for x in (who["title"], who["company"]) if x]),
                   "company": who["company"], "job_title": who["title"],
