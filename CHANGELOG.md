@@ -9,6 +9,22 @@ summarised rather than itemised — see [README](README.md#project-status).
 
 ## [Unreleased]
 
+### Added
+- **ARIA accordion expansion in scans.** Careers pages that hide every role
+  inside collapsed team sections (fin.ai and other Base-UI/Radix disclosure
+  widgets) rendered nothing until expanded — a scan of fin.ai's 130 roles
+  collected 1. The capture pass now opens `aria-expanded="false"` disclosures
+  outside nav/header while job links keep appearing (fin.ai 1 → 130; a plain
+  Greenhouse board 50 → 50, no regression). General, not a per-site branch —
+  see ADR 0001.
+- **ADR 0001** (`docs/adr/`): a scan fix must improve the scanner generally and
+  never regress other companies — no `if host == …` branches.
+
+### Changed
+- `python3 -m backend.cli start` no longer auto-opens a Chrome window and a
+  localhost tab. It runs the backend the extension talks to and prints the URL;
+  `--with-browser` restores the legacy dedicated-window/dashboard behaviour.
+
 ### Fixed
 - **Live scan progress.** The "reading job descriptions" count sat frozen at 0
   while descriptions were read in a background tab (the backend isn't polled in

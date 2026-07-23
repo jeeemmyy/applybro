@@ -57,7 +57,15 @@ happen in the in-page panel; the dashboard is only what the panel can't be.
 
 ## Scan doctrine (2026-07-22 — earned the hard way)
 Every scan bug so far has been a silent UNDERCOUNT that blamed the website.
-Order of preference, and the rules that keep it honest:
+**Rule 0 (ADR 0001): a scan fix improves the SCANNER, never patches one
+company.** When a scan problem is reported for one site, the fix must key off a
+general structural fact (an ARIA pattern, an ATS URL shape, a stated range) —
+never a hostname — must self-verify so it no-ops on sites that don't need it,
+must be additive, and must be regression-checked against a corpus (the reporting
+company + one clean ATS board + one paginated board) with the before/after job
+counts recorded in the commit. No `if host == …` branches in scan code. See
+docs/adr/0001-scan-fixes-must-generalize.md. Order of preference, and the rules
+that keep it honest:
 1. **ATS board API first** (`jobs_from_board_api`): Greenhouse, Lever, Ashby,
    SmartRecruiters, Workday, Personio, Recruitee, Workable. Clean titles,
    true totals, full descriptions. Any failure or a thin answer (<3 jobs)

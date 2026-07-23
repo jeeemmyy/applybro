@@ -71,7 +71,24 @@ async function expandListings() {
   const origRequest = HTMLFormElement.prototype.requestSubmit;
   HTMLFormElement.prototype.submit = function () {};
   HTMLFormElement.prototype.requestSubmit = function () {};
+  // A click is only WORTH keeping if it revealed job links. Both passes below
+  // stop the moment a round adds none — that self-check is what lets this be
+  // general (any site) instead of a per-site rule, and what keeps it from
+  // spinning on a decorative toggle.
+  const clickable = (c) => {
+    if (c.closest("form")) return false;                 // never in a form
+    const t = (c.type || "").toLowerCase();
+    if (t === "submit" || t === "image" || t === "reset") return false;
+    if (c.disabled || c.getAttribute("aria-disabled") === "true") return false;
+    const r = c.getBoundingClientRect();
+    return r.width >= 2 && r.height >= 2;                 // must be visible
+  };
   let clicks = 0;
+  // BOTH passes below click through this ONE helper — the single sanctioned
+  // click site in the whole extension (scripts/check_extension_never_submits.py
+  // enforces exactly one). It only ever receives a `clickable()` control while
+  // the submit guard is installed, so no pass can submit an application.
+  const doClick = (c) => { c.click(); clicks++; };
   try {
     // Rounds, not jobs: a board that reveals 10 per click needed 46 rounds to
     // show 463, and the old limit of 40 stopped at 400 without saying so (cap
@@ -83,21 +100,32 @@ async function expandListings() {
       const before = document.querySelectorAll("a[href]").length;
       const el = Array.from(
         document.querySelectorAll("button, a[role='button'], [role='button']")
-      ).find((c) => {
-        if (c.closest("form")) return false;                 // never in a form
-        const t = (c.type || "").toLowerCase();
-        if (t === "submit" || t === "image" || t === "reset") return false;
-        if (c.disabled || c.getAttribute("aria-disabled") === "true") return false;
-        const r = c.getBoundingClientRect();
-        if (r.width < 2 || r.height < 2) return false;       // must be visible
-        return MORE.test((c.innerText || c.getAttribute("aria-label") || "")
-          .replace(/\s+/g, " ").trim());
-      });
+      ).find((c) => clickable(c) &&
+        MORE.test((c.innerText || c.getAttribute("aria-label") || "")
+          .replace(/\s+/g, " ").trim()));
       if (!el) break;
-      el.click();
-      clicks++;
+      doClick(el);
       await new Promise((r) => setTimeout(r, 1200));
       // No new links appeared — the button is done; stop rather than loop.
+      if (document.querySelectorAll("a[href]").length <= before) break;
+    }
+
+    // Second pass: ARIA accordions. Many careers pages (fin.ai, Base-UI /
+    // Radix disclosure widgets) hide every role inside collapsed team sections
+    // that aren't in the DOM until expanded — a scan of fin.ai's 130 jobs
+    // collected 1 because none were rendered yet (user report 2026-07-23).
+    // Open every aria-expanded=false disclosure OUTSIDE nav/header (those are
+    // menus, not listings) and keep going while job links keep appearing. A
+    // filter dropdown that opens instead adds no job links, so the round-level
+    // growth check drops it harmlessly — never a fin.ai-specific branch.
+    for (let round = 0; round < 60 && Date.now() < deadline; round++) {
+      const before = document.querySelectorAll("a[href]").length;
+      const toggles = Array.from(
+        document.querySelectorAll("[aria-expanded='false']")
+      ).filter((c) => clickable(c) && !c.closest("nav, header"));
+      if (!toggles.length) break;
+      for (const t of toggles) { try { doClick(t); } catch (e) { /* keep going */ } }
+      await new Promise((r) => setTimeout(r, 900));
       if (document.querySelectorAll("a[href]").length <= before) break;
     }
   } finally {

@@ -412,7 +412,10 @@ def main() -> None:
     a.add_argument("--headless", action="store_true",
                    help="fill + screenshot without showing the browser (testing only)")
 
-    st = sub.add_parser("start", help="launch the ApplyBro dashboard in its own Chrome window")
+    st = sub.add_parser("start", help="run the local ApplyBro backend for the extension")
+    st.add_argument("--with-browser", action="store_true",
+                    help="also open the dedicated Chrome window + dashboard "
+                         "(legacy Playwright autofill path); off by default")
     st.add_argument("--headless", action="store_true", help="testing only")
 
     ins = sub.add_parser("insights", help="rejection-aware report from the Email Log")
@@ -439,7 +442,7 @@ def main() -> None:
         return
     if args.cmd == "start":
         from .app.launch import run as launch_run
-        launch_run(headless=args.headless)
+        launch_run(headless=args.headless, with_browser=args.with_browser)
         return
     cfg = Config.load(args.config)
     if args.cmd == "auth":

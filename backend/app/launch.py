@@ -1,13 +1,16 @@
-"""`python -m backend.cli start` — the one command that runs the dashboard.
+"""`python -m backend.cli start` — runs the local ApplyBro backend.
 
-Boots the FastAPI backend (backend.app.server:app) and Playwright's Chrome
-persistent context in the SAME asyncio event loop, so later phases can hand
-the same browser context to the apply engine (application tabs open beside
-the dashboard tab, not in a separate throwaway browser).
+The extension IS the product now (CLAUDE.md), so by DEFAULT this boots only
+the FastAPI backend and prints its URL — it does not open a browser and does
+not navigate anything. The extension talks to this backend from the user's
+own Chrome; auto-opening a second Chrome window with a localhost tab was
+unwanted (user report 2026-07-23).
 
-The Chrome profile lives at ~/.applybro/chrome-profile and persists forever
-(ATS/Workday logins survive between runs). Tab 1 is always the dashboard;
-closing that window shuts the whole thing down.
+`--with-browser` restores the legacy behaviour: a dedicated Chrome window
+(Playwright persistent context) with the dashboard in tab 1, for the
+Playwright-based autofill path that drives that window over CDP. The profile
+lives at ~/.applybro/chrome-profile and persists (ATS/Workday logins survive
+between runs). Closing that window shuts ApplyBro down.
 """
 from __future__ import annotations
 
@@ -34,15 +37,8 @@ def _port_free(host: str, port: int) -> bool:
         return s.connect_ex((host, port)) != 0
 
 
-async def _run(headless: bool = False) -> None:
-    if not _port_free(HOST, PORT):
-        print(f"Port {PORT} is already in use — ApplyBro may already be running. "
-              f"Open http://{HOST}:{PORT} in a browser, or stop the other "
-              f"process and try again.")
-        sys.exit(1)
-
-    from playwright.async_api import async_playwright
-
+async def _serve() -> tuple:
+    """Boot the FastAPI backend. Returns (server, server_task)."""
     from .server import app
 
     config = uvicorn.Config(app, host=HOST, port=PORT, log_level="warning")
@@ -50,6 +46,32 @@ async def _run(headless: bool = False) -> None:
     server_task = asyncio.create_task(server.serve())
     while not server.started:
         await asyncio.sleep(0.05)
+    return server, server_task
+
+
+async def _run_server_only() -> None:
+    """Default: just the backend. The extension connects to it from the user's
+    own browser — nothing is auto-opened."""
+    server, server_task = await _serve()
+    print(f"ApplyBro backend running at http://{HOST}:{PORT}")
+    print("The extension connects here automatically. To open the dashboard "
+          f"(Tracking + Settings) yourself, visit http://{HOST}:{PORT} .")
+    print("Press Ctrl+C to stop.")
+    try:
+        await asyncio.Event().wait()          # until Ctrl+C
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        pass
+    finally:
+        server.should_exit = True
+        await server_task
+
+
+async def _run(headless: bool = False) -> None:
+    from playwright.async_api import async_playwright
+
+    from .server import app
+
+    server, server_task = await _serve()
     print(f"ApplyBro backend running at http://{HOST}:{PORT}")
 
     os.makedirs(PROFILE_DIR, exist_ok=True)
@@ -84,8 +106,14 @@ async def _run(headless: bool = False) -> None:
         await server_task
 
 
-def run(headless: bool = False) -> None:
+def run(headless: bool = False, with_browser: bool = False) -> None:
+    if not _port_free(HOST, PORT):
+        print(f"Port {PORT} is already in use — ApplyBro may already be running. "
+              f"Open http://{HOST}:{PORT} in a browser, or stop the other "
+              f"process and try again.")
+        sys.exit(1)
     try:
-        asyncio.run(_run(headless=headless))
+        asyncio.run(_run(headless=headless) if with_browser
+                    else _run_server_only())
     except KeyboardInterrupt:
         pass
