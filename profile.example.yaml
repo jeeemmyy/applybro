@@ -1,0 +1,52 @@
+# profile.yaml — standard application-form answers (PERSONAL — gitignored).
+# Only facts that are true; the autofiller types these into matching fields.
+first_name: Jane
+last_name: Doe
+full_name: Jane Doe
+email: you@example.com
+phone: "+10000000000"
+phone_national: "0000000000"    # same number WITHOUT the country code
+location: "City, Country"
+linkedin: "https://linkedin.com/in/your-handle"
+github: "https://github.com/your-handle"
+website: ""
+current_company: Your Company
+current_title: Your Title
+
+# Free-text answers the filler may use for common questions. Leave empty to
+# skip a field and answer it yourself during review.
+how_did_you_hear: "Company careers page"
+salary_expectation: ""      # left blank on purpose — computed per-job by salary.py
+notice_period: "Immediately available"
+preferred_start_date: "ASAP"
+start_availability: "Immediately"   # dropdown "when can you start?" — set to a
+                                    # prefix of the option you'd pick
+visa_note: "Open to relocation; would require visa sponsorship"
+
+# Standard answers for application dropdowns. Set these to YOUR truth.
+work_authorized: "No"      # "legally authorized to work in <country>?"
+needs_sponsorship: "Yes"   # "require immigration/visa sponsorship?" (also
+                           # phrased "require us to commence an immigration case")
+work_auth_sponsorship: ""  # combined "authorised to work? (we sponsor)" question:
+                           # set to a prefix of the option you'd pick, e.g.
+                           # "My current work authorisation requires sponsorship"
+willing_to_relocate: ""    # "are you willing to relocate?"
+hybrid_onsite: ""          # "willing to work from our office N days/week?"
+years_experience: ""       # number; answers "do you have N+ years experience?"
+                           # truthfully (>= N -> Yes, else No)
+accept_terms: "Yes"        # privacy notice / GDPR notification / "information
+                           # is true" confirmations
+background_check: ""       # "able to provide references / criminal record
+                           # checks?" — common at banks/fintech
+relatives_at_company: ""   # "any relatives or domestic partners working here?"
+# Demographic questions (gender etc.) are ALWAYS left for the human on purpose.
+
+# Voluntary self-identification: filled ONLY if you provide values here.
+gender: ""
+ethnicity: ""
+veteran_status: ""
+disability_status: ""      # "No" matches both bare Yes/No dropdowns and the
+                           # long US CC-305 "No, I do not have..." option
+sexual_orientation: ""
+first_generation: ""       # "first generation in your family to attend university?"
+neurodiversity: ""

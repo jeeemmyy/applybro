@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "ApplyBro",
+  "version": "0.4.0",
+  "description": "Capture jobs and scan career pages into your ApplyBro dashboard.",
+  "action": { "default_title": "ApplyBro" },
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "host_permissions": ["<all_urls>"]
+}

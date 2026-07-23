@@ -1,0 +1,93 @@
+# Copy this file to config.yaml and fill it in. config.yaml is gitignored.
+google:
+  # OAuth 2.0 Client ID (Desktop app) downloaded from Google Cloud Console.
+  credentials_file: credentials.json
+  # Where the authorized token is cached after the first `auth` run.
+  token_file: token.json
+
+  # The spreadsheet that holds companies AND receives the job log.
+  # Copy the long id from the sheet URL:
+  #   https://docs.google.com/spreadsheets/d/<THIS_PART>/edit
+  spreadsheet_id: ""
+
+  # Tab (worksheet) and header names for your input columns. Columns are located
+  # by header text, so their order doesn't matter — just match the names.
+  companies_tab: "Companies"
+  company_name_column: "Company"
+  career_url_column: "Career Page"
+
+  # Tab where discovered jobs are appended (created automatically if missing).
+  log_tab: "Job Log"
+
+discovery:
+  # COARSE title prefilter only (NOT a fit score). Empty list = keep every job.
+  role_keywords:
+    - developer
+    - engineer
+    - full stack
+    - full-stack
+    - software
+    - backend
+    - frontend
+    - web
+  # Where you'd actually take a job. A REAL filter, applied after the scan has
+  # collected the board — but only to jobs whose location ApplyBro could
+  # actually read. A job with no readable location is always kept, never
+  # silently dropped. Empty list = no location filtering.
+  # Match is generous both ways: "Berlin" keeps "Berlin, Germany", and
+  # "Germany" keeps it too. "remote" also keeps "Remote - EMEA", "Anywhere".
+  locations: []
+  #  - Remote
+  #  - Berlin
+  #  - Germany
+
+  # Teams/functions you're open to. NOT a filter — a full-stack role sits
+  # under Engineering, Product, Technology, R&D or Customer Success depending
+  # on the company, so listing these only ever WIDENS what the title triage
+  # keeps. Nothing is ever excluded for missing this list.
+  departments: []
+  #  - Engineering
+  #  - Product
+  #  - Platform
+
+  max_jobs_per_company: 100
+  request_timeout: 20
+  # When the plain-HTTP adapters find nothing (client-rendered page,
+  # bot-blocked site, "Load more" pagination), drive a real headless browser
+  # at the career page and, as a last resort, extract postings with the local
+  # Claude CLI. Slower (~1 min per such company) but far more accurate.
+  browser_fallback: true
+
+  # AI fit scoring: have the model REASON about how well each job fits your
+  # background (see the `ai` block below for which provider/model). Off by
+  # default — it adds an AI call per relevant job to every Run.
+  ai_fit: false
+
+search:
+  # Fallback used only when a career page is missing/broken and heuristics fail.
+  # "none" (default) or "serpapi". For serpapi, set env APPLYBRO_SEARCH_KEY.
+  provider: none
+
+# All AI in ApplyBro (fit scoring, resume tailoring, answering application
+# questions, reading career pages) goes through ONE provider chosen here.
+# Also settable in Settings -> General.
+ai:
+  # "openai" (default — your own API key, your billing) or "claude_cli"
+  # (your existing Claude Code CLI login, no key).
+  provider: openai
+  # Your OpenAI key. config.yaml is gitignored; the OPENAI_API_KEY env var
+  # overrides this. NEVER commit a real key.
+  openai_api_key: ""
+  # Model per task, nested by provider so switching providers keeps both sets.
+  # OpenAI ids are examples — pick from your account in Settings -> General.
+  models:
+    openai:
+      fit: gpt-4o
+      tailoring: gpt-4o
+      qa: gpt-4o
+      extraction: gpt-4o-mini
+    claude_cli:
+      fit: claude-sonnet-5
+      tailoring: claude-sonnet-5
+      qa: claude-sonnet-5
+      extraction: claude-sonnet-5

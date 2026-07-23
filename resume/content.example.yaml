@@ -1,0 +1,112 @@
+# ------------------------------------------------------------------------
+# content.example.yaml — a generic sample. Copy it to content.yaml and
+# replace every value with your own (or, better, let Claude Code build your
+# content.yaml from your real resume PDF — see the setup wizard's last step).
+#
+# RESUME CONTENT ONLY. No formatting lives here — layout (fonts, sizes,
+# colors, spacing) is entirely in template.typ. Hand-edit any wording below
+# without affecting appearance. Wrap a phrase in **double asterisks** to bold.
+# ------------------------------------------------------------------------
+
+contact:
+  name: JOHN DOE
+  title: Full Stack Developer | Software Engineer
+  photo: assets/photo.png
+  # Ordered contact items shown on one flowing line, separated by " | ".
+  # link: true  -> rendered in link-blue (email/phone/urls). href optional.
+  info:
+    - text: Anytown, USA
+    - text: +1-555-010-0000
+      link: true
+      href: tel:+15550100000
+    - text: john.doe@example.com
+      link: true
+      href: mailto:john.doe@example.com
+    - text: linkedin.com/in/john-doe
+      link: true
+      href: https://linkedin.com/in/john-doe
+    - text: github.com/johndoe
+      link: true
+      href: https://github.com/johndoe
+    - text: Open to relocation
+
+summary: >-
+  Full Stack Developer with **5+ years of experience** building and shipping
+  web applications end to end. Comfortable owning features from requirements
+  through design, development, testing, and release, working directly with
+  product and design in Agile teams. Hands-on with Node.js, Python, TypeScript,
+  React, REST APIs, OAuth, payment integrations, and cloud-hosted databases.
+
+# Section title: "CORE SKILLS". Each item is one line: bold label + text.
+skills:
+  - label: "Full Stack"
+    text: "React, Next.js, TypeScript, JavaScript, Tailwind, component-driven UI, responsive interfaces"
+  - label: "Backend & APIs"
+    text: "Node.js, Python, NestJS, Flask, REST APIs, OAuth, JWT auth, access tokens, API workflow logic"
+  - label: "AI Applications"
+    text: "LLM APIs, embeddings, vector search, retrieval-augmented generation, document Q&A"
+  - label: "Data & Platforms"
+    text: "PostgreSQL, Supabase, Redis, Docker, GitHub Actions, basic AWS, analytics"
+  - label: "Integrations & Payments"
+    text: "Stripe, PayPal, third-party APIs, webhooks, Zapier, Make, Postman"
+  - label: "Delivery"
+    text: "Requirements gathering, estimates, solution design, code review, Agile, stakeholder communication"
+
+# Section title: "FEATURED AI PROJECT".
+featured:
+  title: "Sample RAG Application - Full-Stack Side Project | Personal Project"
+  link: github.com/johndoe/sample-rag-app
+  href: https://github.com/johndoe/sample-rag-app
+  bullets:
+    - "Built a full-stack app where users upload documents and ask questions through a retrieval-augmented chat interface."
+    - "Implemented document chunking, embeddings, vector retrieval, and grounded answers with source citations."
+    - "Designed a provider-agnostic AI layer supporting OpenAI-compatible endpoints via environment configuration."
+    - "Built the backend with NestJS, PostgreSQL, pgvector, JWT auth, DTO validation, and a repository pattern."
+    - "Built the frontend with Next.js, React, Tailwind, authentication flows, and a chat UI."
+
+# Section title: "PROFESSIONAL EXPERIENCE".
+# Each company is numbered (1-, 2-...) automatically.
+# Roles that have a `dates` field are numbered i-, ii-... in navy (promotion
+# track style). Roles without `dates` render as a plain sub-heading.
+experience:
+  - company: Example Software Co.
+    meta: "5+ Years Experience & Promotion Track | Anytown, USA | Apr 2021 - Present"
+    summary: >-
+      Promoted through several roles at the same company, moving from hands-on
+      full-stack development to technical leadership, feature ownership, and
+      architecture for SaaS and API products.
+    roles:
+      - title: Tech Lead
+        dates: Oct 2024 - Present
+        bullets:
+          - "Lead architecture and technical direction for multiple products while contributing hands-on across backend, frontend, and APIs."
+          - "Ship production features using Node.js, Python, TypeScript, and React for SaaS and web applications."
+          - "Apply LLM APIs in product features and internal automation to reduce manual work and improve user experience."
+          - "Run scoping and estimates and own solution design through development, QA, and release with cross-functional teams."
+      - title: Senior Full Stack Developer
+        dates: Aug 2022 - Sep 2024
+        bullets:
+          - "Led feature squads across design, development, and QA in Agile sprints while owning end-to-end delivery."
+          - "Translated business requirements into technical plans, API workflows, and timelines for a dozen-plus features."
+          - "Partnered with clients and stakeholders, balancing timelines, risk, and technical quality."
+      - title: Full Stack Developer
+        dates: Apr 2021 - Jul 2022
+        bullets:
+          - "Built web and web-wrapped mobile applications across product and internal workflow use cases."
+          - "Integrated external services using Google APIs, Zapier, Make, REST APIs, and Stripe."
+          - "Managed OAuth flows, access tokens, API connectivity, product interfaces, and analytics setup."
+  - company: Another Company
+    meta: "Anytown, USA | Sep 2019 - Nov 2019"
+    roles:
+      - title: Software Engineering Intern
+        bullets:
+          - "Supported feature development and testing across the web application stack."
+
+# Section title: "EDUCATION & CERTIFICATIONS".
+education:
+  degrees:
+    - degree: Bachelor of Computer Science
+      meta: "State University, Anytown, USA | Sep 2015 - Jun 2019"
+  certifications: "React: SPAs | MERN Essential Training | React: State Management | Learning TypeScript"
+  notes:
+    - "Completed 40+ online courses across software development and related technologies; certificates available on request."

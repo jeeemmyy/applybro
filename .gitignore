@@ -1,0 +1,40 @@
+# Secrets & personal config (project root) — never commit, never ship
+config.yaml
+credentials.json
+token.json
+profile.yaml
+
+# Resume system: personal artifacts inside resume/
+resume/Master Resume/
+resume/assets/photo.png
+resume/resume.pdf
+resume/content.*.pdf
+resume/assets/compare.png
+resume/assets/original.png
+
+# resume/content.yaml is PERSONAL and untracked (decided 2026-07-14): the
+# source of truth is the per-user Supabase `resumes` table; this file is just
+# the local synced cache typst builds from. content.example.yaml is the
+# tracked template.
+resume/content.yaml
+
+# Runtime state the app generates: workspaces, queue, ui state, csv logs
+data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+.DS_Store
+
+# Frontend build tooling — dist/ IS committed (so `applybro start` works
+# without requiring npm at runtime); only node_modules is excluded.
+frontend/node_modules/
+
+# Claude Code local (machine-specific) settings — launch.json IS tracked
+.claude/settings.local.json
+
+# Local editor/agent tooling config (machine-specific)
+.claude/
