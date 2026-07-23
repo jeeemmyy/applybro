@@ -103,14 +103,25 @@ careers list offers nothing but *Find Relevant Jobs*.
   On a `#`-filtered site, use the page's own *Show all* first: that puts the
   whole filtered list on one page, and the scan then covers it completely
   (and drops the warning).
-- **On a single job posting** → *Apply to this job*. There is no "Save":
-  the dashboard records APPLICATIONS, not jobs. Apply reads the JD off the
-  posting and shows title / company / description as **editable fields** you
-  own — whatever you save is what tailoring reads and what lands in Tracking.
-  If you applied to the same job inside 90 days you get an advisory warning;
-  it never blocks.
-- **On an application form** → the same card, with *Autofill this step*.
-  Nothing is recorded until you click **I've applied**.
+- **On a single job posting** → *Apply to this job* opens the card with the
+  title / company / description as **editable fields** (read off the posting,
+  and filled from the ATS's own API when it's a known board — Greenhouse,
+  Lever, Ashby…, so a client-rendered posting no longer comes up blank). Then
+  **two actions**, no clutter:
+  - **Apply with autofill** — saves what's shown, opens the application form,
+    and fills that first step on arrival. One button, one action.
+  - **Tailor my resume first** — reshapes your resume to this job (the
+    dashboard shows the tailored version), then does the same, attaching the
+    tailored resume.
+
+  There is no separate "Save" (every action saves first) and no "Save the
+  job" — the dashboard records APPLICATIONS, not jobs. If you applied to the
+  same job inside 90 days you get an advisory warning; it never blocks.
+- **On the application form** → the card shows *Autofill this step* for any
+  further pages of a multi-step form (the first step was filled on arrival).
+  Nothing is recorded until you click **I've applied**. As everywhere,
+  ApplyBro fills and highlights — **you review and submit**; nothing is ever
+  submitted for you.
 
 An apply session in progress on a page that isn't its form is never mentioned
 at all — cancel it from the apply card on the form.

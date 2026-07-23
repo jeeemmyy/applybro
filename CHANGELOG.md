@@ -9,7 +9,19 @@ summarised rather than itemised — see [README](README.md#project-status).
 
 ## [Unreleased]
 
+### Changed
+- **Apply flow simplified to two buttons.** A posting used to show Save /
+  Tailor / Autofill-this-step / attach-choice all at once. Now it offers
+  **Apply with autofill** (saves the details, opens the form, and fills the
+  first step on arrival) and **Tailor my resume first** (tailors, then does the
+  same). Saving is implicit; "Autofill this step" only appears on later pages
+  of a multi-step form. Never-submit is unchanged — the panel navigates and
+  fills, you always submit by hand.
+
 ### Fixed
+- **Apply flow reads the description from the ATS API** when a posting's
+  scraped title/description come up thin (a client-rendered Greenhouse job was
+  blank). Known boards only; generic URLs are unchanged.
 - **The extension now has an icon.** The manifest declared none, so Chrome
   showed a gray placeholder that was easy to miss and never auto-pinned — the
   "icon doesn't show up" report. Added a proper **AB** icon (16/32/48/128) for

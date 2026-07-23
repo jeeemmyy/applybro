@@ -835,8 +835,24 @@ async function setApplyUrl(url) {
   if (url) {
     await chrome.storage.session.set({ applyUrl: url });
   } else {
-    await chrome.storage.session.remove(["applyUrl", "applyContext"]);
+    await chrome.storage.session.remove(["applyUrl", "applyContext", "autofillPending"]);
   }
+  return { ok: true };
+}
+
+// "Apply with autofill" / "Tailor first" navigate the tab from the posting to
+// the ATS form, which kills the content script. This flag survives that hop so
+// the panel, once it re-attaches on the form, fills the step by itself — the
+// user pressed one button and expects one action, not a second "Autofill" click
+// (redesign 2026-07-24). Cleared as soon as it fires, and when the session ends.
+async function getAutofillPending() {
+  const v = await chrome.storage.session.get(["autofillPending"]);
+  return !!v.autofillPending;
+}
+
+async function setAutofillPending(on) {
+  if (on) await chrome.storage.session.set({ autofillPending: true });
+  else await chrome.storage.session.remove("autofillPending");
   return { ok: true };
 }
 
@@ -968,7 +984,8 @@ async function handle(msg, sender) {
       return { scanActive: !!scan,
                scanHere: !!(scan && scan.tabId === tabId),
                applyUrl: await getApplyUrl(),
-               applyContext: await getApplyContext() };
+               applyContext: await getApplyContext(),
+               autofillPending: await getAutofillPending() };
     }
     case "startScan":   return startScan(tabId);
     case "confirmScan": return confirmScan(!!msg.go);
@@ -976,6 +993,7 @@ async function handle(msg, sender) {
     case "stopScan":    return stopScan();
     case "setApplyUrl": return setApplyUrl(msg.url || null);
     case "setApplyContext": return setApplyContext(msg.ctx || null);
+    case "setAutofillPending": return setAutofillPending(!!msg.on);
     case "applyDetect": return applyDetect(tabId);
     case "applyFill":   return applyFill(tabId, msg.values, msg.unresolved);
     case "applyAttach": return applyAttach(tabId, msg.url, msg.fieldIds, msg.which);

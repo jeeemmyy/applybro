@@ -303,11 +303,17 @@
                         placeholder="Paste the job description if ApplyBro couldn't find it"></textarea>
               <div class="meta" id="ctxDescNote"></div>
             </div>
-            <button id="ctxSave" class="act secondary">Save these details</button>
-
-            <button id="tailorFirst" class="act secondary" hidden>Tailor my resume first</button>
-            <button id="fillStep" class="act">Autofill this step</button>
-            <p class="meta">
+            <!-- Two clean actions (redesign 2026-07-24). "Apply with autofill"
+                 saves what's above, opens the application form, and fills it on
+                 arrival — one button, one action. "Tailor my resume first"
+                 reshapes the resume to this job, then does the same. The old
+                 Save / Autofill-this-step / attach-choice cluster is folded in.
+                 Never-submit is unchanged: the panel navigates and fills, and
+                 you always submit by hand. -->
+            <button id="applyGo" class="act">Apply with autofill</button>
+            <button id="tailorFirst" class="act secondary">Tailor my resume first</button>
+            <button id="fillStep" class="act secondary" hidden>Autofill this step</button>
+            <p class="meta" id="fillHint" hidden>
               Advanced to the next page of the form? Click "Autofill this step"
               again for it.
             </p>
@@ -878,7 +884,19 @@
         ` on ${dup.date_applied}. That's inside ${d.duplicate_days || 90} days — ` +
         `applying again is up to you.`;
     }
-    $("tailorFirst").hidden = !(d.description || "").trim();
+    updateApplyButtons();
+  }
+
+  // Two phases share the apply card. On the POSTING (still on applyUrl) the two
+  // primary actions show. Once "Apply with autofill" has navigated to the form
+  // (a different URL), those give way to "Autofill this step" for any further
+  // pages — the first fill already ran on arrival.
+  function updateApplyButtons() {
+    const onForm = sessionActive && applyUrl && !sameUrl(location.href, applyUrl);
+    $("applyGo").hidden = onForm;
+    $("tailorFirst").hidden = onForm;
+    $("fillStep").hidden = !onForm;
+    $("fillHint").hidden = !onForm;
   }
 
   async function startApplyWith(url, ctx) {
@@ -899,50 +917,54 @@
   async function beginApply() {
     setApplyStatus("");
     try {
-      // Read the JD HERE, on the posting — the form we're about to navigate
-      // to usually doesn't carry one (user decision 2026-07-22).
+      // Read the JD HERE, on the posting (the backend also enriches it from
+      // the ATS API when it's a known board). This only STARTS the session and
+      // shows the two actions — navigation to the form is the user's next
+      // click, "Apply with autofill", not automatic.
       const ctx = readJobContext();
-      const d = await startApplyWith(location.href, ctx);
-      if (!d) return;
-      const href = findApplyHref();
-      if (href) {
-        setApplyStatus("Opening the application form…");
-        location.href = href;   // navigation only — the page's own Apply link
-      } else {
-        setApplyStatus("Review the details above, then use \"Autofill this " +
-          "step\" once the form is open.");
-      }
+      await startApplyWith(location.href, ctx);
     } catch (e) {
       setApplyStatus(e.message, true);
     }
   }
   $("applyStart").addEventListener("click", beginApply);
 
-  // The user is the authority on these three fields — whatever they save is
-  // what gets tailored against and what lands in Tracking.
-  $("ctxSave").addEventListener("click", async () => {
-    $("ctxSave").disabled = true;
+  // Save the three editable fields without a separate button — every primary
+  // action does it first, so what you see is always what gets tailored and
+  // recorded.
+  async function saveContextImplicit() {
+    const ctx = { title: $("ctxTitle").value.trim(),
+                  company: $("ctxCompany").value.trim(),
+                  description: $("ctxDesc").value.trim() };
+    await api("/api/extension/apply/context", {
+      method: "POST", body: JSON.stringify({ url: applyUrl, ...ctx }) });
+    await bg({ type: "setApplyContext", ctx });
+    return ctx;
+  }
+
+  const sameUrl = (a, b) =>
+    (a || "").split("#")[0].replace(/\/+$/, "") ===
+    (b || "").split("#")[0].replace(/\/+$/, "");
+
+  // "Apply with autofill": save what's shown, then open the application form
+  // and let the on-arrival autofill take over. If the posting has no separate
+  // Apply link (the form is on this very page), fill right here instead.
+  $("applyGo").addEventListener("click", async () => {
+    $("applyGo").disabled = true;
     try {
-      await api("/api/extension/apply/context", {
-        method: "POST",
-        body: JSON.stringify({
-          url: applyUrl,
-          title: $("ctxTitle").value.trim(),
-          company: $("ctxCompany").value.trim(),
-          description: $("ctxDesc").value.trim(),
-        }),
-      });
-      await bg({ type: "setApplyContext", ctx: {
-        title: $("ctxTitle").value.trim(),
-        company: $("ctxCompany").value.trim(),
-        description: $("ctxDesc").value.trim(),
-      } });
-      $("tailorFirst").hidden = !$("ctxDesc").value.trim();
-      setApplyStatus("Saved ✓");
+      await saveContextImplicit();
+      const href = findApplyHref();
+      if (href && !sameUrl(href, location.href)) {
+        await bg({ type: "setAutofillPending", on: true });
+        setApplyStatus("Opening the application form — I'll fill it there…");
+        location.href = href;                 // navigation only
+      } else {
+        await runAutofill();                  // form is already here
+      }
     } catch (e) {
       setApplyStatus(e.message, true);
     } finally {
-      $("ctxSave").disabled = false;
+      $("applyGo").disabled = false;
     }
   });
 
@@ -968,25 +990,43 @@
     }
   });
 
+  // "Tailor my resume first": reshape the resume to this job (dashboard shows
+  // the tailored version), then flow straight into Apply-with-autofill so the
+  // tailored resume is the one attached.
   $("tailorFirst").addEventListener("click", async () => {
     setApplyStatus("Tailoring your resume for this job — usually 1–2 min…");
     $("tailorFirst").disabled = true;
+    $("applyGo").disabled = true;
     try {
+      await saveContextImplicit();
       const d = await api("/api/extension/apply/tailor", {
         method: "POST", body: JSON.stringify({ url: applyUrl }),
       });
-      setApplyStatus(`Tailored ✓ — fit ${d.fit_before}% → ${d.fit_after}%.`);
-      $("tailorFirst").hidden = true;
       applyTailored = true;
-      setApplyStatus("Tailored ✓ — now autofill the form.");
+      setApplyStatus(`Tailored ✓ — fit ${d.fit_before}% → ${d.fit_after}%. ` +
+        `Opening the form…`);
+      const href = findApplyHref();
+      if (href && !sameUrl(href, location.href)) {
+        await bg({ type: "setAutofillPending", on: true });
+        location.href = href;                 // navigation only
+      } else {
+        await runAutofill();
+      }
     } catch (e) {
       setApplyStatus(e.message, true);
     } finally {
       $("tailorFirst").disabled = false;
+      $("applyGo").disabled = false;
     }
   });
 
-  $("fillStep").addEventListener("click", async () => {
+  $("fillStep").addEventListener("click", runAutofill);
+
+  // The one place the form actually gets filled — used by the "Apply with
+  // autofill" button, the auto-fill on form arrival, and the "Autofill this
+  // step" button for multi-page forms. Never submits (the guard lives in
+  // background.applyFill / apply.js).
+  async function runAutofill() {
     setApplyStatus("Reading this step and deciding what to fill…");
     $("fillStep").disabled = true;
     try {
@@ -1033,7 +1073,7 @@
     } finally {
       $("fillStep").disabled = false;
     }
-  });
+  }
 
   async function doAttach(which) {
     $("resumeAsk").hidden = true;
@@ -1218,6 +1258,7 @@
     // is different"). Same-page check keeps it off the session's own pages.
     $("applyStart").hidden = sessionActive;
     $("switchApply").hidden = !(sessionActive && location.href !== applyUrl);
+    if (sessionActive) updateApplyButtons();   // keep the two-phase buttons right
     // The bubble is unsolicited UI on someone else's page: strong signal only.
     $("bubble").hidden = !(strongJobSignal(p) || scanActive ||
                            (sessionActive && kind !== "other")) ||
@@ -1280,6 +1321,16 @@
       try { startedUI(await api("/api/extension/apply/start", {
         method: "POST", body: JSON.stringify({ url: applyUrl }) })); }
       catch (e) { /* backend gone — the Apply button still works manually */ }
+      // Arrived on the application form because the user pressed "Apply with
+      // autofill" (or "Tailor first") on the posting — fill this first step
+      // for them, once. Cleared immediately so later pages don't re-fill
+      // without a click, and so a plain revisit never fills unasked.
+      if (state.autofillPending && !sameUrl(location.href, applyUrl)) {
+        await bg({ type: "setAutofillPending", on: false });
+        showPanel(true);
+        // Let the form finish rendering before reading its fields.
+        setTimeout(() => { runAutofill().catch(() => {}); }, 900);
+      }
     }
   })();
 })();
