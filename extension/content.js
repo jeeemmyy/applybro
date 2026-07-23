@@ -62,7 +62,11 @@
     .mark {
       width: 26px; height: 26px; border-radius: 8px; flex: none;
       background: var(--accent); color: #fff;
-      font: 600 12px/26px inherit; text-align: center;
+      font: 600 12px/1 inherit;
+      /* Flex centering, not line-height: a 26px line-box sits the glyphs a
+         hair high (their cap-height is above the line's midpoint), which is
+         the "AB isn't centered" report. Flex centres the actual glyph box. */
+      display: flex; align-items: center; justify-content: center;
     }
     h1 { flex: 1; margin: 0; font-size: 14px; font-weight: 600;
          letter-spacing: -.01em; }
@@ -168,7 +172,10 @@
     #stages .dot {
       flex: none; width: 16px; height: 16px; margin-top: 1px;
       border: 1.5px solid var(--line); border-radius: 50%;
-      font: 600 10px/13px inherit; text-align: center; color: transparent;
+      font: 600 10px/1 inherit; color: transparent;
+      /* Flex-centre the ✓ instead of line-height + text-align: the glyph was
+         sitting low-left of the circle (user report 2026-07-23). */
+      display: flex; align-items: center; justify-content: center;
     }
     #stages li.done .dot { background: var(--ok); border-color: var(--ok);
                            color: #fff; }
@@ -668,9 +675,15 @@
       return;
     }
     if (r.reading && r.readProgress) {
-      renderFunnel(r.status || lastStatus, 2,
-        `opening them in a background tab — ${r.readProgress.done} of ` +
-        `${r.readProgress.total}`);
+      // During background-tab reading the backend isn't polled (so it isn't
+      // hammered), which means lastStatus.read is frozen — the ONLY live
+      // number here is readProgress.done. So drive the reading row's count
+      // from it directly, and drop the duplicate "— N of M" from the note.
+      const base = { ...(lastStatus || {}),
+                     read: r.readProgress.done,
+                     to_assess: r.readProgress.total,
+                     kept_after_triage: r.readProgress.total };
+      renderFunnel(base, 2, "opening each in a background tab in your browser");
       return;
     }
     if (r.phase === "done") {

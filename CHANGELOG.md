@@ -9,6 +9,17 @@ summarised rather than itemised — see [README](README.md#project-status).
 
 ## [Unreleased]
 
+### Fixed
+- **Live scan progress.** The "reading job descriptions" count sat frozen at 0
+  while descriptions were read in a background tab (the backend isn't polled in
+  that phase, so only the background-tab counter was live); it now drives the
+  row directly and drops the duplicate "— N of M" from the note. Title triage
+  ran its chunks sequentially, so the count jumped only once every ~20s and
+  looked stuck — the chunks now run in parallel (same AI cost), finishing ~3×
+  faster and updating ~3× more often.
+- Header "AB" mark and the funnel tick are flex-centred instead of relying on
+  line-height, which sat both glyphs slightly high/low.
+
 ## [0.4.0] — 2026-07-23
 
 The release that made a scan of a 460-job board trustworthy. Before it, a

@@ -47,6 +47,9 @@ STAGE2_TIMEOUT = 240
 # Above this many titles we chunk the triage call so a huge board doesn't
 # blow the context or the model's attention.
 TRIAGE_CHUNK = 60
+# Chunks run in parallel — matches the assess stage's worker count so a scan
+# never fans out wider than the rate limit expects.
+TRIAGE_WORKERS = 3
 
 
 @dataclass
@@ -161,20 +164,21 @@ def triage_titles(company: str, titles: List[str], background: str,
     returns ALL indices — degrade toward reading more, never toward hiding a
     job the way the keyword filter did.
 
-    `on_progress(done, total, kept)` fires after each chunk. A 466-job board
-    is 8 sequential AI calls here, which is minutes of a progress bar with
-    nothing behind it unless this reports — the caller turns it into a real
-    fraction."""
+    `on_progress(done, total, kept)` fires as each chunk lands. A 466-job
+    board is 8 AI calls here; they run IN PARALLEL (same total cost as
+    sequential, but ~3x faster and the count moves ~3x more often, so it
+    stops looking frozen — user report 2026-07-23). The caller turns the
+    numbers into a real fraction."""
     if not titles:
         return []
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     dept_block = (_DEPARTMENTS_HINT.format(departments=", ".join(departments))
                   if departments else "")
-    keep: List[int] = []
-    for base in range(0, len(titles), TRIAGE_CHUNK):
-        if should_skip and should_skip():
-            # Stop pressed mid-triage: keep what's judged, don't grind through
-            # the remaining chunks.
-            break
+    bases = list(range(0, len(titles), TRIAGE_CHUNK))
+
+    def judge(base: int) -> List[int]:
         chunk = titles[base:base + TRIAGE_CHUNK]
         numbered = "\n".join(f"{i+1}. {t}" for i, t in enumerate(chunk))
         out = _run(_STAGE1_PROMPT.format(
@@ -184,15 +188,32 @@ def triage_titles(company: str, titles: List[str], background: str,
             company=company, titles=numbered), STAGE1_TIMEOUT)
         idxs = ai.as_list(ai.load_json(out), "keep") if out is not None else None
         if not isinstance(idxs, list):
-            keep.extend(range(base, base + len(chunk)))   # fail open
-        else:
-            for n in idxs:
-                if isinstance(n, int) and 1 <= n <= len(chunk):
-                    keep.append(base + n - 1)
-        # After EVERY chunk, including the ones that failed open — a progress
-        # bar that stalls on failures is how a working scan looks stuck.
-        if on_progress:
-            on_progress(base + len(chunk), len(titles), len(set(keep)))
+            return list(range(base, base + len(chunk)))   # fail open
+        return [base + n - 1 for n in idxs
+                if isinstance(n, int) and 1 <= n <= len(chunk)]
+
+    keep: List[int] = []
+    done_titles = 0
+    lock = threading.Lock()
+    with ThreadPoolExecutor(max_workers=TRIAGE_WORKERS) as ex:
+        futures = {}
+        for base in bases:
+            if should_skip and should_skip():
+                break        # Stop pressed — don't dispatch the rest.
+            futures[ex.submit(judge, base)] = base
+        for f in as_completed(futures):
+            base = futures[f]
+            try:
+                got = f.result()
+            except Exception:
+                got = list(range(base, min(base + TRIAGE_CHUNK, len(titles))))
+            with lock:
+                keep.extend(got)
+                done_titles += min(TRIAGE_CHUNK, len(titles) - base)
+                # After EVERY chunk, including ones that failed open — a bar
+                # that stalls on failures is how a working scan looks stuck.
+                if on_progress:
+                    on_progress(done_titles, len(titles), len(set(keep)))
     return sorted(set(keep))
 
 
