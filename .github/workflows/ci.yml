@@ -18,9 +18,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
 
-      # These three are the project's non-negotiables. They are plain static
-      # checks with no dependencies, so they run first and fast.
+      # check_never_submits imports backend.autofill.forms and inspects the
+      # real submit guard's source — it can't do that without the package's
+      # deps, and it correctly FAILS CLOSED (reports UNSAFE) when the import
+      # can't happen. So this job installs requirements; a dependency-free run
+      # would report "unsafe" for the wrong reason.
+      - run: pip install -r requirements.txt
+
+      # The project's non-negotiables.
       - name: Nothing can submit an application (backend)
         run: python3 scripts/check_never_submits.py
       - name: Nothing can submit an application (extension)

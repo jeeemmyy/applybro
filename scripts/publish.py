@@ -165,8 +165,13 @@ def main() -> int:
         if os.path.exists(os.path.join(MIRROR, f)):
             die(f"{f} is in the tracked tree and would be published.")
 
-    msg = args.message or out(["git", "log", "-1", "--format=%B"], cwd=REPO)
-    msg = clean_message(msg)
+    # The message the caller gave (or HEAD's) is the release/tag text. The
+    # COMMIT message can differ from it: on the first publish the commit is
+    # always "Initial commit", but the tag should still carry the real release
+    # notes — the tag body is what GitHub renders as the Release.
+    msg = clean_message(args.message or out(["git", "log", "-1", "--format=%B"],
+                                            cwd=REPO))
+    tag_msg = msg
     if first:
         msg = ("Initial commit — ApplyBro\n\n"
                "Published from a clean export of the tracked tree. The "
@@ -221,7 +226,7 @@ def main() -> int:
             print(f"  tag {args.tag} already exists on the mirror — skipping.")
         else:
             subprocess.run(["git", "tag", "-a", args.tag, "-F", "-"],
-                           cwd=MIRROR, input=msg, text=True, check=True)
+                           cwd=MIRROR, input=tag_msg, text=True, check=True)
             run(["git", "push", "origin", args.tag], cwd=MIRROR)
             print(f"  tagged and pushed {args.tag}.")
     return 0
