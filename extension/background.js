@@ -989,11 +989,31 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return true;   // async response
 });
 
-// Toolbar icon toggles the in-page panel (works on any http(s) page, even
-// ones the bubble stays dormant on). chrome:// and friends have no content
-// script — nothing to toggle there.
-chrome.action.onClicked.addListener((tab) => {
-  if (tab && tab.id) {
-    chrome.tabs.sendMessage(tab.id, { type: "toggle" }).catch(() => {});
+// Toolbar icon toggles the in-page panel. This has to be SELF-HEALING, not
+// best-effort: the content script can be missing or dead for ordinary reasons
+// — a tab that was open before the extension loaded, or (very common in beta)
+// an unpacked-extension RELOAD, which orphans the content script already in
+// every open tab so it can no longer receive messages. The old handler just
+// sent "toggle" and swallowed the failure, so on all those pages clicking the
+// icon did nothing (user report 2026-07-23).
+//
+// So: try to toggle a live panel; if nothing answers, inject the content
+// script and open it. Injecting is safe to repeat — content.js tears down any
+// stale panel and re-initialises, so a fresh working panel always results.
+chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab || !tab.id || !/^https?:/.test(tab.url || "")) return;  // no CS on chrome://
+  try {
+    await chrome.tabs.sendMessage(tab.id, { type: "toggle" });
+    return;                                    // a live panel answered
+  } catch (e) {
+    // No live content script — inject it, then open the panel.
+  }
+  try {
+    await chrome.scripting.executeScript({ target: { tabId: tab.id },
+                                           files: ["content.js"] });
+    await chrome.tabs.sendMessage(tab.id, { type: "show" });
+  } catch (e) {
+    /* a page that forbids injection (some chrome-store / PDF viewers) —
+       nothing we can do, and better to fail quietly than throw. */
   }
 });

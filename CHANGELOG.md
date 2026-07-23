@@ -9,6 +9,18 @@ summarised rather than itemised — see [README](README.md#project-status).
 
 ## [Unreleased]
 
+### Fixed
+- **Toolbar icon is now self-healing.** Clicking the ApplyBro icon did nothing
+  when the content script was missing or orphaned — most often after reloading
+  the unpacked extension, which disconnects the content script in every already
+  open tab. The icon now injects the panel when none answers, and re-injection
+  tears down a dead instance and builds a fresh one, so a working panel always
+  results. General resilience, not a per-page fix.
+- **Triage count moves more often.** Title triage chunked at 60, so a 130-job
+  board stepped the "picking which jobs" number only ~3 times and looked
+  frozen between. Chunks are now 30 with one more worker (~5 steps for 130) at
+  negligible cost — triage prompts are titles only.
+
 ### Added
 - **ARIA accordion expansion in scans.** Careers pages that hide every role
   inside collapsed team sections (fin.ai and other Base-UI/Radix disclosure

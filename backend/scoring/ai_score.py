@@ -44,12 +44,16 @@ log = logging.getLogger("applybro.scoring.ai")
 
 STAGE1_TIMEOUT = 180
 STAGE2_TIMEOUT = 240
-# Above this many titles we chunk the triage call so a huge board doesn't
-# blow the context or the model's attention.
-TRIAGE_CHUNK = 60
-# Chunks run in parallel — matches the assess stage's worker count so a scan
-# never fans out wider than the rate limit expects.
-TRIAGE_WORKERS = 3
+# Titles per triage call. Smaller = the "picking which jobs" count moves more
+# often (a 130-job board was 3 chunks of 60, so the number only stepped ~3
+# times and looked frozen between — user report 2026-07-23). 30 makes it ~5
+# steps for 130 without a meaningful cost change: triage prompts are just
+# titles, so total tokens barely move; there are only a few more small calls.
+TRIAGE_CHUNK = 30
+# Chunks run in parallel. One more worker than the assess stage: triage calls
+# are short, so they finish fast and the extra concurrency keeps the count
+# visibly moving without fanning out near the rate limit.
+TRIAGE_WORKERS = 4
 
 
 @dataclass

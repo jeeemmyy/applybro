@@ -15,7 +15,13 @@
 // in a closed shadow root, so they can't associate with any page <form>.
 (() => {
   "use strict";
-  if (window.__applybroPanelLoaded) return;
+  // Re-injection must REPLACE, not no-op. The toolbar icon re-injects this
+  // script to recover when the previous instance is dead (extension reloaded,
+  // orphaning the content script in every open tab). A plain `if (loaded)
+  // return` guard would then leave the dead panel in place and the icon still
+  // broken — so tear the old one down and build fresh. Under normal first
+  // load __applybroTeardown is undefined and this is a no-op.
+  try { if (window.__applybroTeardown) window.__applybroTeardown(); } catch (e) { /* stale */ }
   window.__applybroPanelLoaded = true;
 
   // ------------------------------------------------------------------ UI
@@ -349,6 +355,15 @@
   tpl.innerHTML = HTML;
   root.appendChild(tpl.content);
   (document.documentElement || document.body).appendChild(host);
+
+  // How a later re-injection (toolbar recovery after an extension reload)
+  // removes THIS instance before building a fresh one: drop the host from the
+  // DOM and stop the poll timer so a dead instance leaves nothing behind.
+  window.__applybroTeardown = () => {
+    try { host.remove(); } catch (e) { /* already gone */ }
+    try { if (pollTimer) clearInterval(pollTimer); } catch (e) { /* not started */ }
+    window.__applybroPanelLoaded = false;
+  };
 
   const $ = (id) => root.getElementById(id);
 
@@ -1213,9 +1228,14 @@
   $("bubble").addEventListener("click", () => showPanel(true));
   $("close").addEventListener("click", () => showPanel(false));
 
-  // Toolbar icon → toggle, on any page (even non-jobish ones).
+  // Toolbar icon → toggle, on any page (even non-jobish ones). "show" is the
+  // recovery path: after the toolbar re-injects this script (dead prior
+  // instance), it asks for the panel open, not toggled — the user clicked the
+  // icon expecting to SEE it.
   chrome.runtime.onMessage.addListener((msg) => {
-    if (msg && msg.type === "toggle") showPanel($("panel").hidden);
+    if (!msg) return;
+    if (msg.type === "toggle") showPanel($("panel").hidden);
+    else if (msg.type === "show") showPanel(true);
   });
 
   // -------------------------------------------------- attach & resume
