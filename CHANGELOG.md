@@ -10,6 +10,11 @@ summarised rather than itemised — see [README](README.md#project-status).
 ## [Unreleased]
 
 ### Fixed
+- **The extension now has an icon.** The manifest declared none, so Chrome
+  showed a gray placeholder that was easy to miss and never auto-pinned — the
+  "icon doesn't show up" report. Added a proper **AB** icon (16/32/48/128) for
+  the toolbar and extensions page. Pin it via the puzzle-piece menu; see the
+  extension README.
 - **Toolbar icon is now self-healing.** Clicking the ApplyBro icon did nothing
   when the content script was missing or orphaned — most often after reloading
   the unpacked extension, which disconnects the content script in every already

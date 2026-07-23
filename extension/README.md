@@ -9,11 +9,20 @@ AI scoring and staging.
 
 1. Open `chrome://extensions`, turn on **Developer mode** (top right).
 2. **Load unpacked** → pick this `extension/` folder.
-3. Open any job-related page — a floating **A** bubble appears on the right;
-   click it to expand the ApplyBro panel inside the page (JobRight-style).
-   On other pages, the toolbar icon toggles the panel.
-4. Keep the ApplyBro dashboard app running (`python3 -m backend.cli start`);
+3. **Pin it to the toolbar.** Chrome does not pin a freshly loaded extension —
+   it hides it in the puzzle-piece (Extensions) menu, which is why the **AB**
+   icon can look "missing". Click the puzzle piece, find **ApplyBro**, and
+   click the pin so its icon stays on the toolbar. Clicking that icon toggles
+   the panel on any page.
+4. Open any job-related page — a floating **AB** bubble also appears on the
+   right; click it to expand the panel inside the page (JobRight-style).
+5. Keep the ApplyBro dashboard app running (`python3 -m backend.cli start`);
    the panel shows "Connected as <you>" when it can reach it.
+
+> After you **reload** the extension (the circular arrow on the extensions
+> page), also refresh any tabs that were already open — a reload disconnects
+> the content script already sitting in them. The toolbar icon now re-injects
+> the panel on click even in that state, but a refresh is the clean fix.
 
 The panel lives IN the page (the Chrome side panel is gone since 0.2.0) — a
 full-height drawer on the right that minimizes to a small icon rather than
