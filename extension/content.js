@@ -1053,9 +1053,21 @@
       const res = await bg({ type: "applyFill", values: r.values,
                              unresolved: r.unresolved });
       const left = (r.unresolved || []).length;
+      // Say WHY the leftovers were left, grouped. "It missed fields" is
+      // unactionable — this distinguishes a deliberate skip (self-ID) from a
+      // profile gap you can close in Settings, from a real miss worth
+      // reporting (user request 2026-07-24).
+      const byReason = {};
+      for (const w of Object.values(r.unresolved_why || {})) {
+        byReason[w] = (byReason[w] || 0) + 1;
+      }
+      const breakdown = Object.entries(byReason)
+        .sort((a, b) => b[1] - a[1])
+        .map(([w, n]) => `  • ${n} × ${w}`)
+        .join("\n");
       setApplyStatus(
         `Filled ${res.filled} field(s)` +
-        (left ? `. ${left} left for you (highlighted).` : ".") +
+        (left ? `. ${left} left for you (highlighted):\n${breakdown}` : ".") +
         `\nReview everything, then submit the form yourself.`);
       // 4. resume slot found: tailored resumes attach right away; otherwise
       //    the CHOICE is the user's — current resume as-is, or tailor first

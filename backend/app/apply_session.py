@@ -404,6 +404,15 @@ def resolve_fields(url: str, fields: List[dict], cfg: Config) -> dict:
     attach: List[str] = []
     questions: List[dict] = []
     file_fields: List[tuple] = []
+    # WHY each field was left. "It missed basic fields" is unactionable on
+    # both sides — the user can't tell a deliberate skip (self-ID) from a
+    # miss, and we can't fix a miss we can't see (user report 2026-07-24).
+    # Highlighting stays the same; this only explains it.
+    why: Dict[str, str] = {}
+
+    def leave(fid: str, reason: str) -> None:
+        unresolved.append(fid)
+        why[fid] = reason
 
     for f in fields:
         fid = str(f.get("id"))
@@ -419,7 +428,7 @@ def resolve_fields(url: str, fields: List[dict], cfg: Config) -> dict:
         if not desc:
             continue
         if DEMOGRAPHIC.search(desc):
-            unresolved.append(fid)   # self-ID stays human-only
+            leave(fid, "self-identification — always yours to answer")
             continue
 
         matched = next((str(a.get("answer") or "") for a in answers
@@ -432,13 +441,17 @@ def resolve_fields(url: str, fields: List[dict], cfg: Config) -> dict:
             pick = _pick_option([str(c) for c in cands], opts) if (cands and opts) else None
             if pick:
                 values[fid] = {"option": pick, "source": "profile"}
+            elif not opts:
+                leave(fid, "this dropdown exposed no options to choose from")
+            elif cands:
+                leave(fid, "your profile answer didn't match any of its options")
             else:
-                unresolved.append(fid)
+                leave(fid, "no profile field answers this question yet")
         elif kind == "checkbox":
             if _CONSENT.search(desc) and str(profile.get("accept_terms", "")).lower() in ("yes", "true"):
                 values[fid] = {"checked": True, "source": "profile"}
             else:
-                unresolved.append(fid)
+                leave(fid, "a tickbox that needs your decision")
         else:   # text-like / textarea
             if matched:
                 values[fid] = {"value": matched, "source": "answers"}
@@ -454,16 +467,33 @@ def resolve_fields(url: str, fields: List[dict], cfg: Config) -> dict:
                                   "kind": kind, "maxlength": f.get("maxlength"),
                                   "_fid": fid})
             else:
-                unresolved.append(fid)
+                leave(fid, "no profile field matches this label")
 
     # Open-ended questions -> the same grounded AI answerer the Playwright
-    # flow uses (needs the workspace for job.md context; without one they
-    # stay unresolved rather than answered blind).
-    if questions and d:
+    # flow uses. This used to require a workspace, which only TAILORING
+    # creates — so applying without tailoring left every essay question blank
+    # ("Which Fin value resonates most with you and why?" came back empty,
+    # user report 2026-07-24). With no workspace we hand the answerer the
+    # session's job description and the master resume directly; the truth
+    # rules are identical, it just has no tailored resume to quote.
+    if questions:
         from ..tailoring import qa
+        job_text, resume_yaml = "", ""
+        if not d:
+            sess = get_session()
+            job_text = "\n\n".join(x for x in (
+                f"# {sess.get('job_title') or ''} at {sess.get('company') or ''}".strip(" #"),
+                sess.get("description") or "") if x)
+            try:
+                from ..paths import CONTENT_YAML
+                with open(CONTENT_YAML) as fh:
+                    resume_yaml = fh.read()
+            except OSError:
+                resume_yaml = ""
         ok, res = qa.answer_questions(
             d, [{k: q[k] for k in ("match", "question", "kind", "maxlength")}
-                for q in questions])
+                for q in questions],
+            job_text=job_text, resume_yaml=resume_yaml)
         if ok:
             by_match = {a["match"]: a["answer"] for a in res}
             for q in questions:
@@ -471,11 +501,12 @@ def resolve_fields(url: str, fields: List[dict], cfg: Config) -> dict:
                     values[q["_fid"]] = {"value": by_match[q["match"]],
                                          "source": "ai"}
                 else:
-                    unresolved.append(q["_fid"])
+                    leave(q["_fid"], "the AI couldn't answer it truthfully from your resume")
         else:
-            unresolved.extend(q["_fid"] for q in questions)
-    else:
-        unresolved.extend(q["_fid"] for q in questions)
+            # AI unavailable or errored — the questions stay for the human,
+            # never a guessed answer on a real application.
+            for q in questions:
+                leave(q["_fid"], f"couldn't write an answer ({str(res)[:80]})")
 
     # No explicitly resume-labeled file field, but the form has a generic
     # upload slot ("Choose a file or drop it here" — SmartRecruiters' Easy
@@ -490,4 +521,4 @@ def resolve_fields(url: str, fields: List[dict], cfg: Config) -> dict:
                 break
 
     return {"values": values, "unresolved": unresolved,
-            "attach_resume_to": attach}
+            "unresolved_why": why, "attach_resume_to": attach}

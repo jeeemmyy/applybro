@@ -23,7 +23,8 @@ AI call, and hand-written entries are never clobbered.
 from __future__ import annotations
 
 import os
-from typing import List, Tuple
+import re
+from typing import List, Optional, Tuple
 
 import yaml
 
@@ -87,6 +88,11 @@ with one element per question, in order.
 """
 
 
+def _norm_key(s: str) -> str:
+    """Compare match keys ignoring case, punctuation and spacing."""
+    return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
+
+
 def _read(path: str) -> str:
     if not os.path.exists(path):
         return ""
@@ -103,24 +109,56 @@ def _format_questions(questions: List[dict]) -> str:
     return "\n".join(lines)
 
 
-def answer_questions(workdir: str, questions: List[dict],
-                     profile_path: str = PROFILE_YAML) -> Tuple[bool, object]:
+def _style_guidance(profile_path: str) -> str:
+    """How the answers should READ, from the user's own profile. Their voice,
+    not a house style — a recruiter reads these, and generic AI prose is worse
+    than none. Falls back to the default sizing guidance."""
+    try:
+        with open(profile_path) as f:
+            prof = yaml.safe_load(f) or {}
+    except (OSError, ValueError):
+        return _DEFAULT_GUIDANCE
+    length = str(prof.get("answer_length") or "").strip() or _DEFAULT_GUIDANCE
+    style = str(prof.get("writing_style") or "").strip()
+    return f"{length}. Write in this voice: {style}" if style else length
+
+
+def answer_questions(workdir: Optional[str], questions: List[dict],
+                     profile_path: str = PROFILE_YAML,
+                     job_text: str = "", resume_yaml: str = "") -> Tuple[bool, object]:
     """Generate grounded answers for the given open questions. On success
-    returns (True, [{match, answer}, ...]) — already persisted into the
-    workspace's answers.yaml. On failure returns (False, reason-string);
-    the fill simply proceeds without AI answers (fields stay 'left for
-    you'), it never blocks the batch."""
+    returns (True, [{match, answer}, ...]) — persisted into the workspace's
+    answers.yaml when there IS a workspace. On failure returns (False,
+    reason-string); the fill simply proceeds without AI answers (fields stay
+    'left for you'), it never blocks the batch.
+
+    `workdir` is OPTIONAL now. It used to be required, which meant open
+    questions were only ever answered when the user had tailored first (that's
+    what creates the workspace) — apply-without-tailoring silently left every
+    essay question blank (user report 2026-07-24). Callers with no workspace
+    pass the job description and resume directly instead; the truth rules are
+    identical either way."""
     if not questions:
         return True, []
 
-    tailored = _read(os.path.join(workdir, "content.tailored.yaml"))
+    if workdir:
+        job_md = _read(os.path.join(workdir, "job.md"))
+        resume = _read(os.path.join(workdir, "content.tailored.yaml"))
+        prepared = _read(os.path.join(workdir, "answers.yaml"))
+    else:
+        job_md, resume, prepared = job_text, resume_yaml, ""
+    # Ground or bail: answering with no job AND no resume would be invention,
+    # which the truth rules forbid outright.
+    if not (job_md.strip() or resume.strip()):
+        return False, "no job description or resume to ground answers in"
+
     prompt = _PROMPT.format(
-        job_md=_read(os.path.join(workdir, "job.md"))[:20000],
-        resume_yaml=tailored[:20000],
+        job_md=job_md[:20000],
+        resume_yaml=resume[:20000],
         profile_yaml=_read(profile_path)[:8000],
-        answers_yaml=_read(os.path.join(workdir, "answers.yaml"))[:6000],
+        answers_yaml=prepared[:6000],
         questions=_format_questions(questions),
-        guidance=_DEFAULT_GUIDANCE,
+        guidance=_style_guidance(profile_path),
     )
     # ai.complete registers the call with the shared abort machinery, so the
     # dashboard's Abort/Stop-batch buttons kill an in-flight answer generation
@@ -135,19 +173,45 @@ def answer_questions(workdir: str, questions: List[dict],
 
     valid_matches = {q["match"] for q in questions}
     limits = {q["match"]: q.get("maxlength") for q in questions}
+    # Match the model's echoed key back LENIENTLY. The caller's key is a
+    # truncated, lowercased slice of the label, and a model that re-wraps or
+    # re-punctuates it would otherwise have its answer silently dropped — and
+    # then reported as "couldn't answer truthfully", which is a lie about a
+    # question it did answer. Exact, then normalised, then prefix, then
+    # position.
+    by_norm = {_norm_key(m): m for m in valid_matches}
+    ordered = [q["match"] for q in questions]
+
+    def resolve_key(raw: str, i: int) -> Optional[str]:
+        if raw in valid_matches:
+            return raw
+        n = _norm_key(raw)
+        if n in by_norm:
+            return by_norm[n]
+        for norm, original in by_norm.items():       # truncation either way
+            if n and norm and (n.startswith(norm) or norm.startswith(n)):
+                return original
+        # Same count and order as asked: trust the position.
+        return ordered[i] if len(data) == len(ordered) and i < len(ordered) else None
+
     answers: List[dict] = []
-    for it in data:
+    seen = set()
+    for i, it in enumerate(data):
         if not isinstance(it, dict):
             continue
-        match = str(it.get("match") or "").strip()
         answer = str(it.get("answer") or "").strip()
-        if match not in valid_matches or not answer:
-            continue  # unknown question, or truthfully unanswerable — skip
+        if not answer:
+            continue                    # truthfully unanswerable — leave blank
+        match = resolve_key(str(it.get("match") or "").strip(), i)
+        if match is None or match in seen:
+            continue                    # unknown question, or a duplicate echo
+        seen.add(match)
         ml = limits.get(match)
         if ml and len(answer) > ml:
             answer = answer[:ml].rsplit(" ", 1)[0].rstrip(".,;: ") + "."
         answers.append({"match": match, "answer": answer})
 
-    for a in answers:
-        upsert_auto_answer(workdir, a["match"], a["answer"])
+    if workdir:      # nothing to persist into without one
+        for a in answers:
+            upsert_auto_answer(workdir, a["match"], a["answer"])
     return True, answers

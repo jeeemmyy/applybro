@@ -13,6 +13,15 @@ website: ""
 current_company: Your Company
 current_title: Your Title
 
+# HOW the AI writes your open-ended answers ("Why do you want to work here?",
+# "Which of our values resonates with you?"). It only ever writes things your
+# resume and the facts below actually support — this controls the VOICE, never
+# the truth. Leave empty for the default.
+writing_style: "Direct and concrete, first person, plain English. Lead with a
+  specific example from my experience. No corporate filler, no buzzwords, no
+  'I am writing to express'."
+answer_length: "2-5 sentences unless the question clearly asks for more"
+
 # Free-text answers the filler may use for common questions. Leave empty to
 # skip a field and answer it yourself during review.
 how_did_you_hear: "Company careers page"

@@ -18,7 +18,7 @@ from typing import Any, Dict
 import yaml
 from ruamel.yaml import YAML
 
-from ..paths import CONTENT_YAML, PROFILE_YAML
+from ..paths import CONTENT_YAML, PROFILE_EXAMPLE_YAML, PROFILE_YAML
 
 _ryaml = YAML()
 _ryaml.preserve_quotes = True
@@ -57,20 +57,41 @@ def sync_down() -> None:
                 f.write(text)
 
 
+def _template_defaults() -> Dict[str, Any]:
+    """Every setting the shipped template knows about. A profile.yaml created
+    before a setting existed simply lacks that key, and both the editor and
+    put_profile key off the file's own keys — so a NEW setting (writing_style,
+    say) would be invisible and unsavable until the user hand-edited YAML.
+    Merging the template in fixes that for every future setting too."""
+    try:
+        with open(PROFILE_EXAMPLE_YAML) as f:
+            return dict(yaml.safe_load(f) or {})
+    except (OSError, ValueError):
+        return {}
+
+
 def get_profile() -> Dict[str, Any]:
     try:
         sync_down()
     except RuntimeError:
         pass   # offline: serve the local cache
     with open(PROFILE_YAML) as f:
-        return dict(_ryaml.load(f))
+        data = dict(_ryaml.load(f))
+    for k, v in _template_defaults().items():
+        if k not in data:
+            data[k] = v if isinstance(v, str) else ""
+    return data
 
 
 def put_profile(updates: Dict[str, str]) -> Dict[str, Any]:
     with open(PROFILE_YAML) as f:
         data = _ryaml.load(f)
+    # KNOWN keys only — the file's own, plus any the shipped template defines
+    # (so a newly-added setting can be saved the first time). Never an
+    # arbitrary key from the client.
+    allowed = set(data) | set(_template_defaults())
     for k, v in updates.items():
-        if k in data:  # only ever update KNOWN keys, never silently add new ones
+        if k in allowed:
             data[k] = v
     with open(PROFILE_YAML, "w") as f:
         _ryaml.dump(data, f)

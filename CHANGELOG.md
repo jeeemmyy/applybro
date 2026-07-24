@@ -9,6 +9,27 @@ summarised rather than itemised — see [README](README.md#project-status).
 
 ## [Unreleased]
 
+### Added
+- **AI answers open-ended application questions without tailoring first.** The
+  answerer previously required a tailoring *workspace*, so applying straight
+  from a posting left every essay question ("Which of our values resonates with
+  you?") blank. With no workspace it now grounds on the session's job
+  description plus your master resume. Truth rules unchanged: an answer it
+  can't support is still left blank, never invented.
+- **Writing style is yours** — `writing_style` and `answer_length` in
+  Settings → Profile control the VOICE of those answers (never the facts).
+  Settings added to the profile template now surface automatically for
+  existing profiles instead of needing a hand-edited YAML.
+- **Autofill says why it skipped a field.** Each left-for-you field now
+  carries a reason (self-ID, no profile answer matched the options, no profile
+  field matches this label, the AI couldn't ground an answer), summarised in
+  the panel — so a miss is diagnosable instead of just highlighted.
+
+### Fixed
+- The AI's echoed question key is matched back leniently (case, punctuation,
+  truncation, or order), so a correctly-answered question is no longer dropped
+  and then mislabelled "couldn't answer truthfully".
+
 ### Changed
 - **Apply flow simplified to two buttons.** A posting used to show Save /
   Tailor / Autofill-this-step / attach-choice all at once. Now it offers
