@@ -7,6 +7,7 @@ email: you@example.com
 phone: "+10000000000"
 phone_national: "0000000000"    # same number WITHOUT the country code
 location: "City, Country"
+country: ""              # own field on some forms; derived from location if blank
 linkedin: "https://linkedin.com/in/your-handle"
 github: "https://github.com/your-handle"
 website: ""

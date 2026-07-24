@@ -170,8 +170,17 @@
               font: 600 9px/1 inherit; color: transparent; }
     .fp-row.done .fp-ico { background: var(--ok); border-color: var(--ok);
                            color: #fff; }
-    .fp-row.busy .fp-ico { border-color: var(--accent);
-                           animation: pulse 1.4s ease-in-out infinite; }
+    /* A field being worked on gets a real SPINNER. The old treatment animated
+       box-shadow, which is invisible at 15px — rows in progress looked
+       identical to rows still waiting (user report 2026-07-24). */
+    .fp-row.busy .fp-ico {
+      border-color: var(--line); border-top-color: var(--accent);
+      border-right-color: var(--accent);
+      animation: fpspin .7s linear infinite;
+    }
+    @keyframes fpspin { to { transform: rotate(360deg); } }
+    /* Waiting, not started: clearly quieter than both done and spinning. */
+    .fp-row.wait .fp-ico { border-style: dotted; opacity: .55; }
     .fp-row.skip .fp-ico { border-style: dashed; }
     .fp-row.skip { color: var(--muted); }
     .fp-why { display: block; font-size: 11.5px; color: var(--muted); }
@@ -1110,7 +1119,7 @@
       `<div class="fp-group">${title}</div>` + list.map((r) => {
         const cls = r.status === "done" ? "done"
                   : r.status === "busy" ? "busy"
-                  : r.status === "skip" ? "skip" : "";
+                  : r.status === "skip" ? "skip" : "wait";
         const mark = r.status === "done" ? "✓" : r.status === "skip" ? "–" : "";
         return `<div class="fp-row ${cls}"><span class="fp-ico">${mark}</span>` +
                `<span>${esc(r.label || "(unlabelled field)")}` +
@@ -1292,14 +1301,16 @@
       pendingAttach = [];
       // The checklist row for the upload settles like every other field, so
       // "was the resume attached?" is answerable at a glance.
+      // Say what actually went wrong. "The field rejected it" is only true
+      // when we HAD a file and it bounced; a missing resume is a different
+      // problem with a different fix.
+      const why = a.reason || "the upload wouldn't accept a scripted file";
       fpMark(slots, a.attached ? "done" : "skip",
-             a.attached ? null : Object.fromEntries(
-               slots.map((f) => [f, "the upload wouldn't accept a scripted file"])));
+             a.attached ? null : Object.fromEntries(slots.map((f) => [f, why])));
       setApplyStatus(a.attached
         ? `Attached your ${which === "master" ? "current" : "tailored"} ` +
           `resume ✓\nReview everything, then submit the form yourself.`
-        : "Couldn't attach the resume — add it by hand (the upload field " +
-          "may not accept scripted files).", !a.attached);
+        : `Couldn't attach the resume — ${why}. Add it by hand.`, !a.attached);
     } catch (e) {
       pendingAttach = [];
       fpMark(slots, "skip", Object.fromEntries(

@@ -10,6 +10,21 @@ summarised rather than itemised — see [README](README.md#project-status).
 ## [Unreleased]
 
 ### Fixed
+- **The resume now actually attaches.** `which=master` only served a resume
+  *uploaded* to your account, so it 404'd for anyone whose resume is built from
+  `content.yaml` — and the panel then blamed the ATS ("the upload field may not
+  accept scripted files") for a file it never fetched. It now falls back to the
+  built `resume/resume.pdf`, and a failed attach reports the real reason.
+- **Country fills from your location.** Forms often ask for country as its own
+  field (Greenhouse puts one beside the phone number) and no profile key
+  answered it. There's a `country` key now, derived from the tail of your
+  "City, Country" location when blank — no retyping.
+- **Fields being worked on show a real spinner.** The in-progress state
+  animated a box-shadow, invisible at 15px, so a field mid-fill looked
+  identical to one still waiting. Waiting, spinning and done are now three
+  clearly different marks.
+- Upload slots ApplyBro deliberately leaves alone (a cover letter) say so,
+  instead of being reported as "not reached".
 - **The apply card could render with no buttons at all.** With a session
   active, "Apply to this job" is hidden by design — but if binding that
   session's UI hadn't finished (or failed), its body stayed hidden too,

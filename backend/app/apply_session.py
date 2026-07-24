@@ -567,6 +567,12 @@ def resolve_fields(url: str, fields: List[dict], cfg: Config,
                 leave(q["_fid"], f"couldn't write an answer ({str(res)[:80]})")
 
     attach = _resume_slot(file_fields)
+    # Any OTHER upload slot is a deliberate skip, not an oversight — ApplyBro
+    # has only a resume to give. Saying so beats the checklist reporting it as
+    # "not reached" (user report 2026-07-24).
+    for fid, desc in file_fields:
+        if fid not in attach:
+            leave(fid, "ApplyBro only attaches your resume — add this one yourself")
 
     return {"values": values, "unresolved": unresolved,
             "unresolved_why": why, "attach_resume_to": attach}

@@ -45,6 +45,10 @@ FIELD_MAP: List[Tuple[str, str]] = [
      r"^title$", "current_title"),
     (r"most recent school|school you attended|school.*attended|name of.*school",
      "education_school"),
+    # Country before the broader location rule, or "country" would fall
+    # through to the full "City, Country" string.
+    (r"^country$|country\s*(?:of\s*)?(?:residence|origin)?\s*\*?$|"
+     r"which country.*(?:live|based|reside)", "country"),
     (r"(?:city|location|where.*(?:located|based))", "location"),
     (r"how.*hear|source|referr?al\s*source", "how_did_you_hear"),
     (r"salary|compensation|expected\s*pay", "salary_expectation"),
@@ -160,7 +164,18 @@ RESUME_HINT = re.compile(r"resume|cv|curriculum", re.I)
 
 def load_profile(path: str = PROFILE_YAML) -> Dict[str, str]:
     with open(path) as f:
-        return {k: ("" if v is None else str(v)) for k, v in yaml.safe_load(f).items()}
+        prof = {k: ("" if v is None else str(v))
+                for k, v in yaml.safe_load(f).items()}
+    # Forms ask for COUNTRY as its own field surprisingly often (Greenhouse
+    # puts one beside the phone number), and a profile written before the key
+    # existed has no answer for it — the panel reported "no profile field
+    # matches this label" for something the user had plainly stated in their
+    # location (user report 2026-07-24). Derive it from the tail of
+    # "City, Country" rather than making them retype it. An explicit
+    # `country:` always wins.
+    if not prof.get("country") and "," in prof.get("location", ""):
+        prof["country"] = prof["location"].rsplit(",", 1)[-1].strip()
+    return prof
 
 
 def _control_descriptor(el) -> str:

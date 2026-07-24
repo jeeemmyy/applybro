@@ -633,7 +633,18 @@ def apply_resume(url: str, which: str = "tailored"):
             pdf = store.base_resume_pdf()
             if pdf:
                 return Response(content=pdf, media_type="application/pdf")
-        raise HTTPException(404, "No base resume uploaded — add one in Settings.")
+        # Fall back to the resume typst BUILT from content.yaml. Requiring an
+        # uploaded copy meant "Apply with autofill" 404'd here and the panel
+        # reported "the upload field may not accept scripted files" — blaming
+        # the ATS for a resume we simply never sent (user report 2026-07-24).
+        # This file is the same master the dashboard serves.
+        from ..paths import RESUME_PDF
+        if os.path.exists(RESUME_PDF):
+            with open(RESUME_PDF, "rb") as f:
+                return Response(content=f.read(), media_type="application/pdf")
+        raise HTTPException(
+            404, "No resume PDF yet — upload one in Settings, or build it "
+                 "from your resume content.")
     # Tailored: the session's own workspace, not a queue lookup.
     from .apply_session import get_session
     d = (get_session() or {}).get("workspace")

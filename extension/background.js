@@ -955,7 +955,15 @@ async function applyAttach(tabId, applyUrl, fieldIds, which) {
   const res = await fetch((await backendUrl()) +
     `/api/extension/apply/resume?url=${encodeURIComponent(applyUrl)}` +
     `&which=${encodeURIComponent(which || "tailored")}`);
-  if (!res.ok) return { attached: 0 };
+  if (!res.ok) {
+    // No PDF to send is a DIFFERENT failure from the field refusing one, and
+    // the panel used to report both as "the upload may not accept scripted
+    // files" — blaming the ATS for a resume we never fetched (user report
+    // 2026-07-24). Pass the real reason back.
+    let detail = "";
+    try { detail = (await res.json()).detail || ""; } catch (e) { /* not JSON */ }
+    return { attached: 0, reason: detail || `couldn't fetch the resume (HTTP ${res.status})` };
+  }
   const data = b64OfBuffer(await res.arrayBuffer());
   let attached = 0;
   for (const fid of fieldIds || []) {
