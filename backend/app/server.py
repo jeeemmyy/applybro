@@ -555,7 +555,12 @@ class ApplyStart(BaseModel):
 
 class ApplyResolve(BaseModel):
     url: str
-    fields: List[Dict[str, Any]]      # [{id,label,kind,options?,maxlength?}]
+    fields: List[Dict[str, Any]]      # [{id,label,kind,required?,options?,...}]
+    # Which pass to run. The panel calls "fast" first so profile-backed fields
+    # land immediately and its checklist starts ticking, then "ai" for the open
+    # questions, which is the slow part (a real model call). "all" does both in
+    # one go and stays the default for any other caller.
+    stage: Optional[str] = "all"      # "fast" | "ai" | "all"
 
 
 class ApplyFinish(BaseModel):
@@ -613,7 +618,7 @@ def apply_resolve(body: ApplyResolve) -> dict:
     backend says what to put in each. Unresolved fields stay for the human."""
     from .apply_session import resolve_fields
     cfg = require_config()
-    return resolve_fields(body.url, body.fields, cfg)
+    return resolve_fields(body.url, body.fields, cfg, stage=body.stage or "all")
 
 
 @app.get("/api/extension/apply/resume")

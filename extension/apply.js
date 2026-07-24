@@ -137,7 +137,16 @@
       } else if (el.value && el.value.trim()) continue;
 
       const label = labelText(el);
-      const item = { label, kind };
+      // Required vs optional, so the panel can group the live checklist the
+      // way the form itself presents it. Three signals, because ATSs mark it
+      // differently: the native attribute, ARIA, and the "*" convention
+      // Greenhouse renders into the label.
+      let required = false;
+      try {
+        required = !!(el.required || el.getAttribute("aria-required") === "true"
+                      || /\*\s*$/.test(label));
+      } catch (e) { /* exotic control — treat as optional */ }
+      const item = { label, kind, required };
 
       if (kind === "radio") {
         const name = el.name || label;

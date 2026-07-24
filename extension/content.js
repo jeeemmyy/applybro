@@ -151,6 +151,30 @@
       background: var(--warn-soft); color: var(--warn);
       font-size: 12px; line-height: 1.5;
     }
+    /* Live autofill checklist. Each row states its own outcome, so a field
+       that was skipped reads as a decision rather than a gap. */
+    #fillProgress { margin-top: 14px; }
+    .fp-head { display: flex; align-items: center; gap: 8px;
+               font-size: 12.5px; font-weight: 600; }
+    .fp-pct { margin-left: auto; font-variant-numeric: tabular-nums;
+              color: var(--muted); font-weight: 600; }
+    #fillProgress .bar { margin-top: 6px; }
+    .fp-group { margin-top: 12px; font-size: 10.5px; font-weight: 600;
+                letter-spacing: .07em; text-transform: uppercase;
+                color: var(--muted); }
+    .fp-row { display: flex; gap: 8px; align-items: flex-start;
+              padding: 5px 0; font-size: 12.5px; line-height: 1.45; }
+    .fp-ico { flex: none; width: 15px; height: 15px; margin-top: 1px;
+              border-radius: 50%; border: 1.5px solid var(--line);
+              display: flex; align-items: center; justify-content: center;
+              font: 600 9px/1 inherit; color: transparent; }
+    .fp-row.done .fp-ico { background: var(--ok); border-color: var(--ok);
+                           color: #fff; }
+    .fp-row.busy .fp-ico { border-color: var(--accent);
+                           animation: pulse 1.4s ease-in-out infinite; }
+    .fp-row.skip .fp-ico { border-style: dashed; }
+    .fp-row.skip { color: var(--muted); }
+    .fp-why { display: block; font-size: 11.5px; color: var(--muted); }
     .field { margin-top: 12px; }
     .field label {
       display: block; margin-bottom: 4px;
@@ -331,6 +355,19 @@
             <button id="applyGo" class="act">Apply with autofill</button>
             <button id="tailorFirst" class="act secondary">Tailor my resume first</button>
             <button id="fillStep" class="act secondary" hidden>Autofill this step</button>
+
+            <!-- Live per-field checklist while autofill runs: every field the
+                 form asks for, grouped as the form groups them, each ticking
+                 as it lands. Fills are staged (profile fields first, AI
+                 answers after) so this shows real movement, not a fake bar. -->
+            <div id="fillProgress" hidden>
+              <div class="fp-head">
+                <span id="fpTitle">Autofilling…</span>
+                <span id="fpPct" class="fp-pct">0%</span>
+              </div>
+              <div class="bar"><i id="fpBar" style="width:0%"></i></div>
+              <div id="fpList"></div>
+            </div>
             <p class="meta" id="fillHint" hidden>
               Advanced to the next page of the form? Click "Autofill this step"
               again for it.
@@ -1055,20 +1092,83 @@
 
   $("fillStep").addEventListener("click", runAutofill);
 
+  // ---------------------------------------- live autofill checklist
+  // fpState: fid -> {label, required, status: "wait"|"busy"|"done"|"skip", why}
+  let fpState = new Map();
+
+  function fpRender() {
+    const rows = [...fpState.values()];
+    if (!rows.length) { $("fillProgress").hidden = true; return; }
+    $("fillProgress").hidden = false;
+    const settled = rows.filter((r) => r.status === "done" || r.status === "skip").length;
+    const pct = Math.round((settled / rows.length) * 100);
+    $("fpPct").textContent = `${pct}%`;
+    $("fpBar").style.width = `${Math.max(2, pct)}%`;
+
+    const group = (want) => rows.filter((r) => !!r.required === want);
+    const section = (title, list) => !list.length ? "" :
+      `<div class="fp-group">${title}</div>` + list.map((r) => {
+        const cls = r.status === "done" ? "done"
+                  : r.status === "busy" ? "busy"
+                  : r.status === "skip" ? "skip" : "";
+        const mark = r.status === "done" ? "✓" : r.status === "skip" ? "–" : "";
+        return `<div class="fp-row ${cls}"><span class="fp-ico">${mark}</span>` +
+               `<span>${esc(r.label || "(unlabelled field)")}` +
+               (r.status === "skip" && r.why
+                  ? `<span class="fp-why">${esc(r.why)}</span>` : "") +
+               `</span></div>`;
+      }).join("");
+    $("fpList").innerHTML =
+      section("Required", group(true)) + section("Optional", group(false));
+  }
+
+  function fpStart(fields) {
+    fpState = new Map(fields.map((f) => [String(f.id), {
+      label: (f.label || "").replace(/\s*\*\s*$/, ""),
+      required: !!f.required, status: "wait", why: "",
+    }]));
+    fpRender();
+  }
+
+  function fpMark(fids, status, whyMap) {
+    for (const fid of fids || []) {
+      const row = fpState.get(String(fid));
+      if (!row) continue;
+      row.status = status;
+      if (whyMap && whyMap[fid]) row.why = whyMap[fid];
+    }
+    fpRender();
+  }
+
+  function fpFinish(label) {
+    // Anything still waiting was never reached (an error mid-run) — say so
+    // rather than leaving it spinning forever.
+    for (const row of fpState.values()) {
+      if (row.status === "wait" || row.status === "busy") {
+        row.status = "skip";
+        row.why = row.why || "not reached";
+      }
+    }
+    $("fpTitle").textContent = label;
+    fpRender();
+  }
+
   // The one place the form actually gets filled — used by the "Apply with
   // autofill" button, the auto-fill on form arrival, and the "Autofill this
   // step" button for multi-page forms. Never submits (the guard lives in
   // background.applyFill / apply.js).
   async function runAutofill() {
     // Autofill is SLOW when the form has open questions — writing those is a
-    // real AI call. A single frozen line for 30s reads as a hang, so each
-    // stage reports as it starts and the buttons say they're working
-    // (user report 2026-07-24).
+    // real AI call. So it runs in TWO passes and reports each field as it
+    // lands: profile-backed fields fill immediately, then the AI answers
+    // arrive. The checklist is the progress indicator (user request
+    // 2026-07-24) — a real fraction of real fields, never a fake bar.
     setApplyStatus("Reading this step…");
     $("fillStep").disabled = true;
     $("applyGo").disabled = true;
     const wasGo = $("applyGo").textContent;
     $("applyGo").textContent = "Working…";
+    $("fpTitle").textContent = "Autofilling…";
     try {
       // 1. background injects apply.js into every frame and detects fields
       const det = await bg({ type: "applyDetect" });
@@ -1076,6 +1176,7 @@
       if (fields.length === 0) {
         // Honest zero: "no empty fields" on a visibly empty form was a lie
         // (user report 2026-07-19) — say what was actually seen.
+        $("fillProgress").hidden = true;
         setApplyStatus(det.controls
           ? `No fillable empty fields found — the ${det.controls} control(s) ` +
             `on this step are already filled, hidden, or of a kind ApplyBro ` +
@@ -1085,47 +1186,82 @@
             "hand this time.", true);
         return;
       }
-      // 2. backend resolves values (same logic as the Playwright filler).
-      //    Open questions mean a real AI call here — say so, with a time hint,
-      //    so a 30s wait looks like work rather than a freeze.
-      const essayish = fields.filter(
-        (f) => f.kind === "textarea" || (f.label || "").length >= 30).length;
-      setApplyStatus(
-        `Found ${fields.length} field(s) to work on. Deciding what goes in each…` +
-        (essayish
-          ? `\nWriting answers to ${essayish} open question(s) with AI — this ` +
-            `usually takes 20–40 seconds.`
-          : ""));
-      const r = await api("/api/extension/apply/resolve", {
-        method: "POST", body: JSON.stringify({ url: applyUrl, fields }),
+      fpStart(fields);
+      setApplyStatus("");
+
+      // 2a. FAST pass — everything the profile can answer, no AI. Lands in a
+      //     second or two, so most of the checklist ticks straight away.
+      const fast = await api("/api/extension/apply/resolve", {
+        method: "POST",
+        body: JSON.stringify({ url: applyUrl, fields, stage: "fast" }),
       });
-      // 3. fill (guard on during fill, off after so YOU can submit)
-      setApplyStatus(`Filling ${Object.keys(r.values || {}).length} field(s)…`);
-      const res = await bg({ type: "applyFill", values: r.values,
-                             unresolved: r.unresolved });
+      let filled = 0;
+      if (Object.keys(fast.values || {}).length) {
+        const res = await bg({ type: "applyFill", values: fast.values,
+                               unresolved: fast.unresolved });
+        filled += (res && res.filled) || 0;
+      }
+      fpMark(Object.keys(fast.values || {}), "done");
+      fpMark(fast.unresolved || [], "skip", fast.unresolved_why || {});
       filledOnce = true;
       updateApplyButtons();
-      const left = (r.unresolved || []).length;
+
+      // 2b. AI pass — the open questions, marked "writing…" while they run.
+      const pending = fast.pending_ai || [];
+      let why = { ...(fast.unresolved_why || {}) };
+      let leftover = [...(fast.unresolved || [])];
+      if (pending.length) {
+        fpMark(pending, "busy");
+        setApplyStatus(
+          `Writing ${pending.length} open answer(s) with AI — usually 20–40 seconds.`);
+        const ai = await api("/api/extension/apply/resolve", {
+          method: "POST",
+          body: JSON.stringify({ url: applyUrl, fields, stage: "ai" }),
+        });
+        // Only the AI-sourced values are new; the rest were filled above.
+        const aiValues = {};
+        for (const [fid, v] of Object.entries(ai.values || {})) {
+          if (pending.includes(fid)) aiValues[fid] = v;
+        }
+        if (Object.keys(aiValues).length) {
+          const res2 = await bg({ type: "applyFill", values: aiValues,
+                                  unresolved: [] });
+          filled += (res2 && res2.filled) || 0;
+        }
+        fpMark(Object.keys(aiValues), "done");
+        const stillLeft = pending.filter((f) => !aiValues[f]);
+        fpMark(stillLeft, "skip", ai.unresolved_why || {});
+        leftover = leftover.concat(stillLeft);
+        why = { ...why, ...(ai.unresolved_why || {}) };
+      }
+
+      fpFinish(`Autofilled ${filled} of ${fields.length} field(s)`);
+
       // Say WHY the leftovers were left, grouped. "It missed fields" is
       // unactionable — this distinguishes a deliberate skip (self-ID) from a
       // profile gap you can close in Settings, from a real miss worth
       // reporting (user request 2026-07-24).
       const byReason = {};
-      for (const w of Object.values(r.unresolved_why || {})) {
-        byReason[w] = (byReason[w] || 0) + 1;
+      for (const fid of leftover) {
+        const w = why[fid];
+        if (w) byReason[w] = (byReason[w] || 0) + 1;
       }
       const breakdown = Object.entries(byReason)
         .sort((a, b) => b[1] - a[1])
         .map(([w, n]) => `  • ${n} × ${w}`)
         .join("\n");
       setApplyStatus(
-        `Filled ${res.filled} field(s)` +
-        (left ? `. ${left} left for you (highlighted):\n${breakdown}` : ".") +
+        `Filled ${filled} field(s)` +
+        (leftover.length
+          ? `. ${leftover.length} left for you (highlighted)` +
+            (breakdown ? `:\n${breakdown}` : ".")
+          : ".") +
         `\nReview everything, then submit the form yourself.`);
-      // 4. resume slot found: tailored resumes attach right away; otherwise
+
+      // 3. resume slot found: tailored resumes attach right away; otherwise
       //    the CHOICE is the user's — current resume as-is, or tailor first
       //    (user request 2026-07-19). Never attached silently.
-      pendingAttach = r.attach_resume_to || [];
+      pendingAttach = fast.attach_resume_to || [];
       if (pendingAttach.length) {
         if (applyTailored) {
           await doAttach("tailored");
@@ -1134,6 +1270,7 @@
         }
       }
     } catch (e) {
+      fpFinish("Autofill stopped");
       setApplyStatus(e.message, true);
     } finally {
       $("fillStep").disabled = false;
@@ -1195,6 +1332,8 @@
     applyTailored = false;
     pendingAttach = [];
     filledOnce = false;
+    fpState = new Map();
+    $("fillProgress").hidden = true;
     refreshContext();
     setStatus(outcome === "applied"
       ? "Marked applied — it's on your Jobs tab." : "Application cancelled.");

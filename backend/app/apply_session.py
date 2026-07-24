@@ -384,10 +384,47 @@ _GENERIC_UPLOAD = re.compile(r"choose a file|drop (it|files?|your)|drag|upload|a
 _NOT_RESUME_FILE = re.compile(r"cover|letter|portfolio|photo|picture|avatar|transcript|certificate", re.I)
 
 
-def resolve_fields(url: str, fields: List[dict], cfg: Config) -> dict:
+def _resume_slot(file_fields: List[tuple]) -> List[str]:
+    """Which upload slot gets the resume. Deliberately conservative: attaching
+    the resume to a COVER LETTER slot is worse than attaching nothing, and
+    modern widgets hide their file inputs so several may be unlabelled
+    (Greenhouse renders Resume/CV and Cover Letter as identical
+    Attach/Dropbox/Drive rows — user report 2026-07-24).
+
+      1. slots that SAY resume/CV win outright;
+      2. otherwise the FIRST slot not named as another document kind (cover
+         letter, portfolio, transcript…) — on every ATS the resume comes
+         first — which also covers unlabelled and generic-dropzone slots
+         (SmartRecruiters' "Choose a file or drop it here", 2026-07-19).
+
+    Returns at most ONE slot, so a second upload can never receive it."""
+    from ..autofill.forms import RESUME_HINT
+    named = [fid for fid, desc in file_fields
+             if desc and RESUME_HINT.search(desc)
+             and not _NOT_RESUME_FILE.search(desc)]
+    if named:
+        return [named[0]]
+    for fid, desc in file_fields:
+        if not _NOT_RESUME_FILE.search(desc or ""):
+            return [fid]
+    return []
+
+
+def resolve_fields(url: str, fields: List[dict], cfg: Config,
+                   stage: str = "all") -> dict:
     """The extension found these controls on the current form step; decide
     what goes in each. Returns {values: {id: {...}}, unresolved: [...],
-    attach_resume_to: [...]} — unresolved fields stay for the human."""
+    unresolved_why: {...}, attach_resume_to: [...]} — unresolved fields stay
+    for the human.
+
+    `stage` splits the work so the panel can show honest progress instead of
+    one long freeze (user request 2026-07-24):
+      "fast" — everything except the open-question AI call. Open questions come
+               back in `pending_ai` so the panel can mark them "writing…".
+      "ai"   — only the open-question answers; the profile-backed fields were
+               already filled by the "fast" pass.
+      "all"  — both, in one response (the default for any other caller).
+    """
     from ..autofill.forms import (DEMOGRAPHIC, RESUME_HINT, _answer_for,
                                   _value_for, load_profile)
     profile = load_profile()
@@ -476,6 +513,13 @@ def resolve_fields(url: str, fields: List[dict], cfg: Config) -> dict:
     # user report 2026-07-24). With no workspace we hand the answerer the
     # session's job description and the master resume directly; the truth
     # rules are identical, it just has no tailored resume to quote.
+    if questions and stage == "fast":
+        # Hand the open questions back unanswered; the panel will ask for them
+        # in the "ai" pass. They are NOT unresolved — just not written yet.
+        pending_ai = [q["_fid"] for q in questions]
+        return {"values": values, "unresolved": unresolved,
+                "unresolved_why": why, "attach_resume_to": _resume_slot(file_fields),
+                "pending_ai": pending_ai}
     if questions:
         from ..tailoring import qa
         job_text, resume_yaml = "", ""
@@ -508,27 +552,7 @@ def resolve_fields(url: str, fields: List[dict], cfg: Config) -> dict:
             for q in questions:
                 leave(q["_fid"], f"couldn't write an answer ({str(res)[:80]})")
 
-    # Which upload slot gets the resume. Order matters, and it is deliberately
-    # conservative: attaching the resume to a COVER LETTER slot is worse than
-    # attaching nothing, and modern widgets hide their file inputs so several
-    # may be unlabelled (Greenhouse renders Resume/CV and Cover Letter as
-    # identical Attach/Dropbox/Drive rows — user report 2026-07-24).
-    #   1. slots that SAY resume/CV win outright;
-    #   2. otherwise the FIRST slot not named as another document kind
-    #      (cover letter, portfolio, transcript…) — on every ATS the resume
-    #      comes first — including unlabelled and generic-dropzone slots
-    #      (SmartRecruiters' "Choose a file or drop it here", 2026-07-19).
-    # Never more than one slot, so a second upload can't receive the resume.
-    named = [fid for fid, desc in file_fields
-             if desc and RESUME_HINT.search(desc)
-             and not _NOT_RESUME_FILE.search(desc)]
-    if named:
-        attach.append(named[0])
-    else:
-        for fid, desc in file_fields:
-            if not _NOT_RESUME_FILE.search(desc or ""):
-                attach.append(fid)
-                break
+    attach = _resume_slot(file_fields)
 
     return {"values": values, "unresolved": unresolved,
             "unresolved_why": why, "attach_resume_to": attach}

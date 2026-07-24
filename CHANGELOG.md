@@ -9,6 +9,15 @@ summarised rather than itemised — see [README](README.md#project-status).
 
 ## [Unreleased]
 
+### Added
+- **Live autofill checklist.** Autofill now shows every field the form asks
+  for, grouped **Required / Optional** exactly as the form presents them, each
+  ticking as it lands — ✓ filled, – skipped (with the reason inline), and a
+  pulse while the AI writes an answer — under a real percentage and progress
+  bar. To make that progress genuine rather than a fake bar, resolving runs in
+  two passes: profile-backed fields land in a second or two, then the open
+  questions are written by AI and land after.
+
 ### Fixed
 - **The resume is attached again.** Modern upload widgets (Greenhouse's
   Attach / Dropbox / Drive row) hide the native `<input type="file">` behind
