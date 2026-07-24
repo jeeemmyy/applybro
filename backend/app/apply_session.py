@@ -221,6 +221,20 @@ def start_session(url: str, cfg: Config, threshold: int,
                     stack.extend(node.values())
             if desc:
                 break
+    # RESUMING the same application? The panel re-binds on every page load by
+    # POSTing just {url}, with no description — so without this we re-fetched
+    # the ATS on each load, adding ~2s to every re-attach and hitting their API
+    # for something already in hand (user report 2026-07-24). What the user
+    # reviewed and saved wins over anything refetched, so this is also the
+    # correct precedence, not merely the fast one.
+    if cur.get("url") == url:
+        if len(desc) < 200 and (cur.get("description") or "").strip():
+            desc = cur["description"]
+        if not who["title"] and cur.get("job_title"):
+            who["title"] = cur["job_title"]
+        if not who["company"] and cur.get("company"):
+            who["company"] = cur["company"]
+
     # Still thin, or the page never rendered a title (client-rendered ATS
     # postings often haven't hydrated when the panel reads them — a Greenhouse
     # job showed an empty title and description, user report 2026-07-24)?

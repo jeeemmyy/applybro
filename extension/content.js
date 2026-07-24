@@ -1479,6 +1479,15 @@
     $("applyStart").hidden = sessionActive;
     $("switchApply").hidden = !(sessionActive && location.href !== applyUrl);
     if (sessionActive) updateApplyButtons();   // keep the two-phase buttons right
+    // INVARIANT: the apply card never renders with nothing to press. A session
+    // whose UI failed to bind used to hide "Apply to this job" (because a
+    // session is active) while its body stayed hidden too — leaving no action
+    // and no way to cancel (user report 2026-07-24). Whatever the cause, put
+    // an action back.
+    if (!$("applyCard").hidden && $("applyBody").hidden
+        && $("applyStart").hidden && $("switchApply").hidden) {
+      $("applyStart").hidden = false;
+    }
     // The bubble is unsolicited UI on someone else's page: strong signal only.
     $("bubble").hidden = !(strongJobSignal(p) || scanActive ||
                            (sessionActive && kind !== "other")) ||
@@ -1542,10 +1551,26 @@
     if (scanActive) startPolling();
     if (sessionActive) {
       // Re-bind the apply UI to the stored job (start is idempotent — it
-      // re-returns the session's fit/tailored state).
-      try { startedUI(await api("/api/extension/apply/start", {
-        method: "POST", body: JSON.stringify({ url: applyUrl }) })); }
-      catch (e) { /* backend gone — the Apply button still works manually */ }
+      // re-returns the session's fit/tailored state). This can take a couple
+      // of seconds when the description is refetched from the ATS API, and
+      // "Apply to this job" is ALREADY hidden by refreshContext because a
+      // session is active — so say what's happening rather than showing a
+      // card with no buttons (user report 2026-07-24).
+      setApplyStatus("Restoring the application in progress…");
+      try {
+        startedUI(await api("/api/extension/apply/start", {
+          method: "POST", body: JSON.stringify({ url: applyUrl }) }));
+        setApplyStatus("");
+      } catch (e) {
+        // The old comment here claimed "the Apply button still works
+        // manually". It does not — it is hidden. Leaving it at that gave a
+        // card with nothing to press and no way to cancel. Offer the escape
+        // hatch that CAN clear a stuck session, and say why.
+        $("switchApply").hidden = false;
+        setApplyStatus(
+          `Couldn't restore the application in progress — ${e.message}. ` +
+          `Use the button above to cancel it and start this one fresh.`, true);
+      }
       // Arrived on the application form because the user pressed "Apply with
       // autofill" (or "Tailor first") on the posting — fill this first step
       // for them, once. Cleared immediately so later pages don't re-fill

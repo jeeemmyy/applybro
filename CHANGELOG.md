@@ -10,6 +10,19 @@ summarised rather than itemised — see [README](README.md#project-status).
 ## [Unreleased]
 
 ### Fixed
+- **The apply card could render with no buttons at all.** With a session
+  active, "Apply to this job" is hidden by design — but if binding that
+  session's UI hadn't finished (or failed), its body stayed hidden too,
+  leaving nothing to press and no way to cancel. Re-binding now says
+  "Restoring the application in progress…" while it works, falls back to an
+  explicit escape hatch on failure, and a hard invariant guarantees the card
+  always offers at least one action.
+- **Re-attaching an application no longer refetches the ATS.** The panel
+  re-binds on every page load by sending just the URL, so the description was
+  pulled from the board's API each time — ~2s per load, and a failed fetch
+  could overwrite a description already in hand. The stored one now wins,
+  which is also the correct precedence: what you reviewed and saved beats
+  anything refetched.
 - **Autofill counted 29 fields where the form has 22.** react-select renders a
   proxy `<input class="…requiredInput">` beside every dropdown — no id, no
   name, no label, no placeholder — purely to trigger native validation.
