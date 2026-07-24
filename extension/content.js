@@ -15,6 +15,15 @@
 // in a closed shadow root, so they can't associate with any page <form>.
 (() => {
   "use strict";
+  // Is this script still connected to a LIVE extension? After the extension is
+  // reloaded or updated, scripts already in a page are orphaned and their
+  // chrome.* APIs go away — reading chrome.runtime then yields undefined (or
+  // throws outright). Every chrome.* use below goes through this check.
+  const extAlive = () => {
+    try { return !!(chrome && chrome.runtime && chrome.runtime.id); }
+    catch (e) { return false; }
+  };
+
   // Re-injection must REPLACE, not no-op. The toolbar icon re-injects this
   // script to recover when the previous instance is dead (extension reloaded,
   // orphaning the content script in every open tab). A plain `if (loaded)
@@ -22,6 +31,15 @@
   // broken — so tear the old one down and build fresh. Under normal first
   // load __applybroTeardown is undefined and this is a no-op.
   try { if (window.__applybroTeardown) window.__applybroTeardown(); } catch (e) { /* stale */ }
+
+  // Orphaned instance: it cannot reach the service worker, so building a panel
+  // would only produce a dead one. Stop cleanly instead. This used to run on
+  // and throw at the onMessage listener near the bottom of the file —
+  // "Cannot read properties of undefined (reading 'onMessage')" — which
+  // aborted everything after it, including the attach-and-resume block that
+  // restores the panel. That is what made the panel appear only sometimes
+  // (user report 2026-07-24). A live re-injection replaces us.
+  if (!extAlive()) return;
   window.__applybroPanelLoaded = true;
 
   // ------------------------------------------------------------------ UI
@@ -377,6 +395,11 @@
   // All backend HTTP goes through the service worker: a content script's own
   // fetch runs under the PAGE's CORS/CSP and would be blocked on most sites.
   async function bg(msg) {
+    // The context can die mid-session too (a reload while the panel is open).
+    // Say so in words the user can act on, instead of a TypeError.
+    if (!extAlive()) {
+      throw new Error("ApplyBro was reloaded — refresh this page to reconnect.");
+    }
     const r = await chrome.runtime.sendMessage(msg);
     if (r && r.error) throw new Error(r.error);
     return r;
@@ -1285,11 +1308,16 @@
   // recovery path: after the toolbar re-injects this script (dead prior
   // instance), it asks for the panel open, not toggled — the user clicked the
   // icon expecting to SEE it.
-  chrome.runtime.onMessage.addListener((msg) => {
-    if (!msg) return;
-    if (msg.type === "toggle") showPanel($("panel").hidden);
-    else if (msg.type === "show") showPanel(true);
-  });
+  // Belt and braces: extAlive() was true at the top, but the extension can be
+  // reloaded at any instant. A throw HERE would abort the resume block below,
+  // which is exactly the failure this file just fixed — never let it happen.
+  try {
+    chrome.runtime.onMessage.addListener((msg) => {
+      if (!msg) return;
+      if (msg.type === "toggle") showPanel($("panel").hidden);
+      else if (msg.type === "show") showPanel(true);
+    });
+  } catch (e) { /* orphaned between the check and here — nothing to listen with */ }
 
   // -------------------------------------------------- attach & resume
   // Fresh page load: dormant bubble on job-ish pages; if a scan or apply
@@ -1344,5 +1372,8 @@
         setTimeout(() => { runAutofill().catch(() => {}); }, 900);
       }
     }
-  })();
+  })().catch(() => {
+    /* Nothing in re-attaching is worth a broken page. The bubble and the
+       toolbar icon still work; the user can open the panel by hand. */
+  });
 })();

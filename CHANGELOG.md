@@ -9,6 +9,16 @@ summarised rather than itemised — see [README](README.md#project-status).
 
 ## [Unreleased]
 
+### Fixed
+- **The panel appearing only "sometimes" was an uncaught TypeError.** Reloading
+  the unpacked extension orphans the content script in every open tab, and its
+  `chrome.*` APIs go away — so `chrome.runtime.onMessage.addListener(...)` threw
+  `Cannot read properties of undefined (reading 'onMessage')`. That call sits
+  near the END of content.js, so the throw aborted everything after it,
+  including the block that re-attaches the panel and resumes a scan or apply
+  session. Every `chrome.*` use is now behind a liveness check: an orphaned
+  instance stops cleanly and a live re-injection (the toolbar icon) replaces it.
+
 ### Added
 - **AI answers open-ended application questions without tailoring first.** The
   answerer previously required a tailoring *workspace*, so applying straight
