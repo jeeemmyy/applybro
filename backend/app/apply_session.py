@@ -421,9 +421,9 @@ def resolve_fields(url: str, fields: List[dict], cfg: Config) -> dict:
         kind = f.get("kind") or "text"
 
         if kind == "file":
+            # Just collect here — WHICH upload gets the resume is decided
+            # after the loop, once every slot on the step is known.
             file_fields.append((fid, desc))
-            if not desc or RESUME_HINT.search(desc):
-                attach.append(fid)
             continue
         if not desc:
             continue
@@ -508,15 +508,25 @@ def resolve_fields(url: str, fields: List[dict], cfg: Config) -> dict:
             for q in questions:
                 leave(q["_fid"], f"couldn't write an answer ({str(res)[:80]})")
 
-    # No explicitly resume-labeled file field, but the form has a generic
-    # upload slot ("Choose a file or drop it here" — SmartRecruiters' Easy
-    # Apply dropzone never says "resume", so nothing was ever attached; user
-    # report 2026-07-19). The FIRST generic slot on such a form is the resume;
-    # anything naming another document kind is left alone.
-    if not attach:
+    # Which upload slot gets the resume. Order matters, and it is deliberately
+    # conservative: attaching the resume to a COVER LETTER slot is worse than
+    # attaching nothing, and modern widgets hide their file inputs so several
+    # may be unlabelled (Greenhouse renders Resume/CV and Cover Letter as
+    # identical Attach/Dropbox/Drive rows — user report 2026-07-24).
+    #   1. slots that SAY resume/CV win outright;
+    #   2. otherwise the FIRST slot not named as another document kind
+    #      (cover letter, portfolio, transcript…) — on every ATS the resume
+    #      comes first — including unlabelled and generic-dropzone slots
+    #      (SmartRecruiters' "Choose a file or drop it here", 2026-07-19).
+    # Never more than one slot, so a second upload can't receive the resume.
+    named = [fid for fid, desc in file_fields
+             if desc and RESUME_HINT.search(desc)
+             and not _NOT_RESUME_FILE.search(desc)]
+    if named:
+        attach.append(named[0])
+    else:
         for fid, desc in file_fields:
-            if (_GENERIC_UPLOAD.search(desc)
-                    and not _NOT_RESUME_FILE.search(desc)):
+            if not _NOT_RESUME_FILE.search(desc or ""):
                 attach.append(fid)
                 break
 

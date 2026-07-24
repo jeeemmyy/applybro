@@ -105,7 +105,15 @@
       const tag = el.tagName.toLowerCase();
       const type = (el.getAttribute("type") || "").toLowerCase();
       if (tag === "input" && SKIP_TYPES.has(type)) continue;
-      if (!visible(el)) continue;
+      // A file input is the ONE control kind that is routinely invisible BY
+      // DESIGN: modern upload widgets (Greenhouse's Attach / Dropbox / Drive
+      // row, SmartRecruiters' dropzone) hide the native input and drive it
+      // from a styled button. Requiring visibility meant the resume slot was
+      // never even DETECTED, so nothing was ever attached and the report
+      // didn't mention it (user report 2026-07-24). Attaching sets .files
+      // directly, which works fine on a hidden input — no click involved.
+      const isFile = tag === "input" && type === "file";
+      if (isFile ? el.disabled : !visible(el)) continue;
 
       let kind;
       if (tag === "select") kind = "select";

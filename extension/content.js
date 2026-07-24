@@ -819,6 +819,7 @@
   let applyUrl = null;
   let applyTailored = false;   // has THIS session's job been tailored yet?
   let pendingAttach = [];      // resume file-input fids awaiting the user's choice
+  let filledOnce = false;      // has a fill run on THIS page? (drives the card's phase)
 
   function setApplyStatus(msg, isErr) {
     $("applyStatus").textContent = msg;
@@ -910,16 +911,24 @@
     updateApplyButtons();
   }
 
-  // Two phases share the apply card. On the POSTING (still on applyUrl) the two
-  // primary actions show. Once "Apply with autofill" has navigated to the form
-  // (a different URL), those give way to "Autofill this step" for any further
-  // pages — the first fill already ran on arrival.
+  // Two phases share the apply card.
+  //   BEFORE you've acted: the two primary actions, and nothing else. "I've
+  //     applied" is hidden — offering it before anything has happened is what
+  //     made the card read as nonsense (user report 2026-07-24).
+  //   AFTER a fill: "Autofill this step" (for further pages of a multi-step
+  //     form) and "I've applied" to record it.
+  // The trigger is `filledOnce` OR having navigated off the posting — NOT the
+  // URL alone: Greenhouse renders the application form on the posting's own
+  // page, so a URL-only test never left phase one there.
   function updateApplyButtons() {
-    const onForm = sessionActive && applyUrl && !sameUrl(location.href, applyUrl);
-    $("applyGo").hidden = onForm;
-    $("tailorFirst").hidden = onForm;
-    $("fillStep").hidden = !onForm;
-    $("fillHint").hidden = !onForm;
+    const navigatedToForm =
+      sessionActive && applyUrl && !sameUrl(location.href, applyUrl);
+    const acted = navigatedToForm || filledOnce;
+    $("applyGo").hidden = acted;
+    $("tailorFirst").hidden = acted;
+    $("fillStep").hidden = !acted;
+    $("fillHint").hidden = !acted;
+    $("applyDone").hidden = !acted;
   }
 
   async function startApplyWith(url, ctx) {
@@ -1002,6 +1011,7 @@
       applyUrl = null;
       sessionActive = false;
       applyTailored = false;
+      filledOnce = false;
       $("applyBody").hidden = true;
       $("resumeAsk").hidden = true;
       await beginApply();
@@ -1050,8 +1060,15 @@
   // step" button for multi-page forms. Never submits (the guard lives in
   // background.applyFill / apply.js).
   async function runAutofill() {
-    setApplyStatus("Reading this step and deciding what to fill…");
+    // Autofill is SLOW when the form has open questions — writing those is a
+    // real AI call. A single frozen line for 30s reads as a hang, so each
+    // stage reports as it starts and the buttons say they're working
+    // (user report 2026-07-24).
+    setApplyStatus("Reading this step…");
     $("fillStep").disabled = true;
+    $("applyGo").disabled = true;
+    const wasGo = $("applyGo").textContent;
+    $("applyGo").textContent = "Working…";
     try {
       // 1. background injects apply.js into every frame and detects fields
       const det = await bg({ type: "applyDetect" });
@@ -1068,13 +1085,26 @@
             "hand this time.", true);
         return;
       }
-      // 2. backend resolves values (same logic as the Playwright filler)
+      // 2. backend resolves values (same logic as the Playwright filler).
+      //    Open questions mean a real AI call here — say so, with a time hint,
+      //    so a 30s wait looks like work rather than a freeze.
+      const essayish = fields.filter(
+        (f) => f.kind === "textarea" || (f.label || "").length >= 30).length;
+      setApplyStatus(
+        `Found ${fields.length} field(s) to work on. Deciding what goes in each…` +
+        (essayish
+          ? `\nWriting answers to ${essayish} open question(s) with AI — this ` +
+            `usually takes 20–40 seconds.`
+          : ""));
       const r = await api("/api/extension/apply/resolve", {
         method: "POST", body: JSON.stringify({ url: applyUrl, fields }),
       });
       // 3. fill (guard on during fill, off after so YOU can submit)
+      setApplyStatus(`Filling ${Object.keys(r.values || {}).length} field(s)…`);
       const res = await bg({ type: "applyFill", values: r.values,
                              unresolved: r.unresolved });
+      filledOnce = true;
+      updateApplyButtons();
       const left = (r.unresolved || []).length;
       // Say WHY the leftovers were left, grouped. "It missed fields" is
       // unactionable — this distinguishes a deliberate skip (self-ID) from a
@@ -1107,6 +1137,8 @@
       setApplyStatus(e.message, true);
     } finally {
       $("fillStep").disabled = false;
+      $("applyGo").disabled = false;
+      $("applyGo").textContent = wasGo;
     }
   }
 
@@ -1162,6 +1194,7 @@
     sessionActive = false;
     applyTailored = false;
     pendingAttach = [];
+    filledOnce = false;
     refreshContext();
     setStatus(outcome === "applied"
       ? "Marked applied — it's on your Jobs tab." : "Application cancelled.");

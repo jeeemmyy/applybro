@@ -10,6 +10,23 @@ summarised rather than itemised — see [README](README.md#project-status).
 ## [Unreleased]
 
 ### Fixed
+- **The resume is attached again.** Modern upload widgets (Greenhouse's
+  Attach / Dropbox / Drive row) hide the native `<input type="file">` behind
+  styled buttons, and detection skipped every invisible control — so the
+  resume slot was never even found. File inputs, the one control kind that is
+  hidden *by design*, are now detected regardless of visibility. Which slot
+  receives it is decided conservatively: a resume/CV-labelled input wins,
+  else the first upload not named as another document kind, and never more
+  than one — a hidden Cover Letter input must not get the resume.
+- **Autofill reports progress.** Writing open-ended answers is a real AI call,
+  so the card sat on one frozen line for ~30s and looked hung. It now reports
+  each stage (reading → deciding, with a time hint when there are questions to
+  write → filling) and the button says it's working.
+- **The apply card's buttons follow the flow.** "I've applied" no longer
+  appears before you have done anything, and the card switches to
+  "Autofill this step" + "I've applied" once a fill has run — previously it
+  keyed off the URL alone, which never changed on Greenhouse because the
+  application form lives on the posting's own page.
 - **The panel appearing only "sometimes" was an uncaught TypeError.** Reloading
   the unpacked extension orphans the content script in every open tab, and its
   `chrome.*` APIs go away — so `chrome.runtime.onMessage.addListener(...)` threw
