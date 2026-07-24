@@ -146,6 +146,19 @@
         required = !!(el.required || el.getAttribute("aria-required") === "true"
                       || /\*\s*$/.test(label));
       } catch (e) { /* exotic control — treat as optional */ }
+      // A control we cannot NAME is not a question — it's a widget internal.
+      // react-select renders a proxy <input class="…requiredInput"> beside
+      // every dropdown purely to trigger native validation: no id, no name,
+      // no placeholder, no aria-label, no <label>. Greenhouse's form has
+      // seven, which inflated the field count and filled the panel's
+      // checklist with "(unlabelled field)" rows (user report 2026-07-24).
+      // The backend already ignores anything it can't name, so dropping them
+      // here loses no fillable field. File inputs are exempt: they're hidden
+      // by design and identified by position.
+      if (kind !== "file" && !label && !el.id && !el.name
+          && !el.getAttribute("placeholder") && !el.getAttribute("aria-label")) {
+        continue;
+      }
       const item = { label, kind, required };
 
       if (kind === "radio") {

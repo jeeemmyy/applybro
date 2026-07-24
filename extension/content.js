@@ -1191,6 +1191,9 @@
 
       // 2a. FAST pass — everything the profile can answer, no AI. Lands in a
       //     second or two, so most of the checklist ticks straight away.
+      //     Every row goes BUSY first: a static row gives no sign anything is
+      //     happening to it (user report 2026-07-24).
+      fpMark(fields.map((f) => f.id), "busy");
       const fast = await api("/api/extension/apply/resolve", {
         method: "POST",
         body: JSON.stringify({ url: applyUrl, fields, stage: "fast" }),
@@ -1258,16 +1261,17 @@
           : ".") +
         `\nReview everything, then submit the form yourself.`);
 
-      // 3. resume slot found: tailored resumes attach right away; otherwise
-      //    the CHOICE is the user's — current resume as-is, or tailor first
-      //    (user request 2026-07-19). Never attached silently.
+      // 3. Resume. The old flow stopped here to ask "current resume, or tailor
+      //    first?" — but that choice IS the two buttons now: pressing "Apply
+      //    with autofill" instead of "Tailor my resume first" already said
+      //    "go with what I have". Asking again was a dead-end extra click and
+      //    the resume simply never got attached (user report 2026-07-24).
+      //    It is still not silent: the checklist row and the status say which
+      //    resume went in.
       pendingAttach = fast.attach_resume_to || [];
       if (pendingAttach.length) {
-        if (applyTailored) {
-          await doAttach("tailored");
-        } else {
-          $("resumeAsk").hidden = false;
-        }
+        fpMark(pendingAttach, "busy");
+        await doAttach(applyTailored ? "tailored" : "master");
       }
     } catch (e) {
       fpFinish("Autofill stopped");
@@ -1281,16 +1285,25 @@
 
   async function doAttach(which) {
     $("resumeAsk").hidden = true;
+    const slots = pendingAttach;
     try {
       const a = await bg({ type: "applyAttach", url: applyUrl,
-                           fieldIds: pendingAttach, which });
+                           fieldIds: slots, which });
       pendingAttach = [];
+      // The checklist row for the upload settles like every other field, so
+      // "was the resume attached?" is answerable at a glance.
+      fpMark(slots, a.attached ? "done" : "skip",
+             a.attached ? null : Object.fromEntries(
+               slots.map((f) => [f, "the upload wouldn't accept a scripted file"])));
       setApplyStatus(a.attached
         ? `Attached your ${which === "master" ? "current" : "tailored"} ` +
           `resume ✓\nReview everything, then submit the form yourself.`
         : "Couldn't attach the resume — add it by hand (the upload field " +
           "may not accept scripted files).", !a.attached);
     } catch (e) {
+      pendingAttach = [];
+      fpMark(slots, "skip", Object.fromEntries(
+        slots.map((f) => [f, "attach failed — add it by hand"])));
       setApplyStatus(`Resume attach failed: ${e.message} — add it by hand.`, true);
     }
   }

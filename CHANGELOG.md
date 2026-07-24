@@ -9,6 +9,22 @@ summarised rather than itemised — see [README](README.md#project-status).
 
 ## [Unreleased]
 
+### Fixed
+- **Autofill counted 29 fields where the form has 22.** react-select renders a
+  proxy `<input class="…requiredInput">` beside every dropdown — no id, no
+  name, no label, no placeholder — purely to trigger native validation.
+  Greenhouse's form has seven, and each became a phantom "(unlabelled field)"
+  row. A control that cannot be *named* is not a question and is no longer
+  detected; the backend already ignored them, so no fillable field is lost.
+  Measured on the live form: 29 → 22, every real field kept.
+- **The resume attaches instead of asking.** After filling, the flow stopped to
+  ask "current resume, or tailor first?" — but that choice *is* the two buttons
+  now, so the prompt was a dead-end extra click and the resume never went in.
+  "Apply with autofill" attaches your current resume, "Tailor my resume first"
+  attaches the tailored one, and the checklist row says which.
+- **Every row shows when it's being worked on**, rather than sitting inert
+  until it flips to done.
+
 ### Added
 - **Live autofill checklist.** Autofill now shows every field the form asks
   for, grouped **Required / Optional** exactly as the form presents them, each
