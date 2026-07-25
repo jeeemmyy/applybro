@@ -1601,18 +1601,45 @@
       } catch (e) { /* backend not running — stay dormant */ }
     }
     sessionActive = !!applyUrl;
+
+    // ARRIVING AT THE FORM we were sent to. The user pressed "Apply with
+    // autofill" on the posting; we set autofillPending and navigated here —
+    // which may be a NEW TAB, a CROSS-DOMAIN jump (Delivery Hero → jobs.smart
+    // recruiters.com), or a URL the ATS then REDIRECTED, so the final URL rarely
+    // matches what we predicted. That flag, NOT the URL, is the authoritative
+    // "this is the session's form" signal. Gating it behind a URL match meant
+    // the form opened and was never filled (user report 2026-07-25). Claim the
+    // form here — before anything renders — so the session owns it.
+    let arrivingAtForm = false;
+    if (sessionActive && state.autofillPending
+        && !sameUrl(location.href, applyUrl)) {
+      // ...but only claim the page that actually HAS the form. An ATS apply
+      // link often lands on a redirect/intermediate page first (Delivery
+      // Hero's /Workflow → jobs.smartrecruiters.com); consuming the flag there
+      // would leave the real form unfilled. Wait briefly for a client-rendered
+      // form, and if none appears, pass the flag on to the next page.
+      for (let i = 0; i < 5; i++) {
+        if (probePage().inputs >= 2) { arrivingAtForm = true; break; }
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      if (arrivingAtForm) {
+        applyFormUrl = location.href;
+        await bg({ type: "setApplyFormUrl", url: location.href });
+        await bg({ type: "setAutofillPending", on: false });
+      }
+    }
+
     const jobish = refreshContext();
     // Auto-open ONLY where the work is: the tab being scanned, or a page the
-    // apply session plausibly continues on (the job's own page, or a job-ish
-    // page like the ATS form it navigated to). A lingering session opening
-    // the panel on Twitter/Gmail was the 2026-07-19 regression.
+    // apply session plausibly continues on (its own posting/form). A lingering
+    // session opening the panel on Twitter/Gmail was the 2026-07-19 regression.
     if (scanActive || (sessionActive && (jobish || sessionOwnsPage()))) {
       showPanel(true);
     }
     if (scanActive) startPolling();
-    // Only re-bind the session UI on a page the session actually OWNS. On a
-    // different job's posting/form the session must stay silent — restoring it
-    // there is exactly what showed the wrong job's data (user report
+    // Re-bind the session UI only on a page the session OWNS (its posting, or
+    // the form just claimed above). On a DIFFERENT job's page it stays silent —
+    // restoring it there is what showed the wrong job's data (user report
     // 2026-07-25). Those pages just show "Apply to this job".
     if (sessionActive && sessionOwnsPage()) {
       // Re-bind the apply UI to the stored job (start is idempotent — it
@@ -1634,12 +1661,8 @@
           `Couldn't restore the application in progress — ${e.message}. ` +
           `Press "Apply to this job" to start it fresh.`, true);
       }
-      // Arrived on the application form because the user pressed "Apply with
-      // autofill" (or "Tailor first") on the posting — fill this first step
-      // for them, once. Cleared immediately so later pages don't re-fill
-      // without a click, and so a plain revisit never fills unasked.
-      if (state.autofillPending && !sameUrl(location.href, applyUrl)) {
-        await bg({ type: "setAutofillPending", on: false });
+      // Fill this first step, once, on the form we were sent to.
+      if (arrivingAtForm) {
         showPanel(true);
         // Let the form finish rendering before reading its fields.
         setTimeout(() => { runAutofill().catch(() => {}); }, 900);

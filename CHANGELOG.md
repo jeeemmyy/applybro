@@ -10,6 +10,15 @@ summarised rather than itemised — see [README](README.md#project-status).
 ## [Unreleased]
 
 ### Fixed
+- **Autofill-on-arrival works again when the form opens at a different URL.** A
+  previous fix gated it behind an exact URL match, so when the ATS apply link
+  jumped cross-domain or the ATS redirected (Delivery Hero's Apply →
+  `/Workflow` → jobs.smartrecruiters.com), the form opened but was never
+  filled — the extension "lost" the job. The `autofillPending` flag, not the
+  URL, now drives it: whichever page carries the real form (same tab, a new
+  tab, or after any number of redirects) claims the session and fills. An
+  intermediate redirect page with no form passes the flag on instead of
+  swallowing it.
 - **A leftover apply session no longer hijacks other jobs' pages.** A session
   bound to job X used to show X's title/company/description — and an "I've
   applied / Cancel" — on ANY posting or form, so a stale Intercom session
