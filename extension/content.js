@@ -340,20 +340,31 @@
                  page is the only source now (no saved job), so the user gets
                  to correct it before anything is tailored or recorded. -->
             <div id="dupWarn" class="warn" hidden></div>
-            <div class="field">
-              <label for="ctxTitle">Job title</label>
-              <input id="ctxTitle" type="text" placeholder="e.g. Senior Fullstack Engineer">
+            <!-- The job's editable context. Hidden on a BARE form — one the
+                 user opened directly, not via "Apply to this job" on a posting
+                 — because that page carries no real job ad to show or tailor
+                 against (user request 2026-07-25). -->
+            <div id="ctxFields">
+              <div class="field">
+                <label for="ctxTitle">Job title</label>
+                <input id="ctxTitle" type="text" placeholder="e.g. Senior Fullstack Engineer">
+              </div>
+              <div class="field">
+                <label for="ctxCompany">Company</label>
+                <input id="ctxCompany" type="text" placeholder="e.g. Contentful">
+              </div>
+              <div class="field">
+                <label for="ctxDesc">Job description</label>
+                <textarea id="ctxDesc" rows="5"
+                          placeholder="Paste the job description if ApplyBro couldn't find it"></textarea>
+                <div class="meta" id="ctxDescNote"></div>
+              </div>
             </div>
-            <div class="field">
-              <label for="ctxCompany">Company</label>
-              <input id="ctxCompany" type="text" placeholder="e.g. Contentful">
-            </div>
-            <div class="field">
-              <label for="ctxDesc">Job description</label>
-              <textarea id="ctxDesc" rows="5"
-                        placeholder="Paste the job description if ApplyBro couldn't find it"></textarea>
-              <div class="meta" id="ctxDescNote"></div>
-            </div>
+            <p class="meta" id="bareNote" hidden>
+              You opened this form directly, so ApplyBro fills what your profile
+              answers and leaves the rest for you. To tailor your resume to this
+              role, open the job posting itself and press “Apply to this job”.
+            </p>
             <!-- Two clean actions (redesign 2026-07-24). "Apply with autofill"
                  saves what's above, opens the application form, and fills it on
                  arrival — one button, one action. "Tailor my resume first"
@@ -878,6 +889,42 @@
            !!(applyFormUrl && sameUrl(location.href, applyFormUrl));
   }
 
+  // A BARE-FORM session: one started ON an application form the user opened
+  // directly, NOT reached via "Apply to this job" on a posting. Its applyUrl
+  // is this very form (a posting session's applyUrl is the posting, a
+  // different URL), so it carries no real job ad — no description to show, and
+  // nothing to tailor against (user request 2026-07-25).
+  function isBareFormSession(kind) {
+    return sessionActive && sameUrl(applyUrl, location.href) &&
+           (kind || pageKind(probePage())) === "form";
+  }
+
+  // Title only, for a bare form. The body of a form is the FORM, never the job
+  // ad, so we never scrape it as a description (that produced "Easy Apply
+  // Choose an option…" as the job description — user report 2026-07-25). The
+  // backend fills company from the URL; there is no real JD to read.
+  function readFormContext() {
+    let title = "";
+    for (const el of document.querySelectorAll('script[type="application/ld+json"]')) {
+      let data; try { data = JSON.parse(el.textContent || ""); } catch (e) { continue; }
+      const stack = [data];
+      while (stack.length) {
+        const node = stack.pop();
+        if (Array.isArray(node)) { stack.push(...node); continue; }
+        if (!node || typeof node !== "object") continue;
+        if (node["@type"] === "JobPosting" && node.title) { title = String(node.title).trim(); break; }
+        stack.push(...Object.values(node));
+      }
+      if (title) break;
+    }
+    if (!title) {
+      const h = document.querySelector("h1, h2");
+      title = ((h && h.innerText) || document.title || "")
+        .split(/\s+[|\-–—]\s+/)[0].replace(/\s+/g, " ").trim().slice(0, 160);
+    }
+    return { title, company: "", description: "" };
+  }
+
   function setApplyStatus(msg, isErr) {
     $("applyStatus").textContent = msg;
     $("applyStatus").style.color = isErr ? "#B3402A" : "";
@@ -950,6 +997,10 @@
     $("applyBody").hidden = false;
     sessionActive = true;
     applyTailored = !!d.tailored;
+    const bare = isBareFormSession();
+    // A bare form shows no job ad and no tailoring — just the profile fill.
+    $("ctxFields").hidden = bare;
+    $("bareNote").hidden = !bare;
     refreshContext();
     fillContextFields({
       title: d.title || "", company: d.company || "",
@@ -980,9 +1031,13 @@
   function updateApplyButtons() {
     const navigatedToForm =
       sessionActive && applyUrl && !sameUrl(location.href, applyUrl);
-    const acted = navigatedToForm || filledOnce;
-    $("applyGo").hidden = acted;
-    $("tailorFirst").hidden = acted;
+    // A bare form IS the fill — there's no "Apply with autofill"/"Tailor" step
+    // (beginApply filled it straight away), and on a reload it goes right back
+    // to the post-fill controls rather than an empty card.
+    const bare = isBareFormSession();
+    const acted = bare || navigatedToForm || filledOnce;
+    $("applyGo").hidden = bare || acted;
+    $("tailorFirst").hidden = bare || acted;
     $("fillStep").hidden = !acted;
     $("fillHint").hidden = !acted;
     $("applyDone").hidden = !acted;
@@ -1007,8 +1062,8 @@
     setApplyStatus("");
     try {
       // A leftover session for a DIFFERENT job would 409 the start and, worse,
-      // was showing that job's details on this page. Clear it first, so "Apply
-      // to this job" always applies to THIS job (user report 2026-07-25).
+      // was showing that job's details on this page. Clear it first, so the
+      // entry button always applies to THIS page (user report 2026-07-25).
       if (sessionActive && !sessionOwnsPage()) {
         try {
           await api("/api/extension/apply/finish", {
@@ -1019,12 +1074,20 @@
         applyUrl = null; applyFormUrl = null; sessionActive = false;
         applyTailored = false; filledOnce = false;
       }
-      // Read the JD HERE, on the posting (the backend also enriches it from
-      // the ATS API when it's a known board). This only STARTS the session and
-      // shows the two actions — navigation to the form is the user's next
-      // click, "Apply with autofill", not automatic.
-      const ctx = readJobContext();
-      await startApplyWith(location.href, ctx);
+
+      if (pageKind(probePage()) === "form") {
+        // BARE FORM the user opened directly. There is no job ad to read, so
+        // we don't scrape one — just start a light session (title from the
+        // form's heading, company from the URL) and fill the profile fields
+        // right here. No JD fields, no tailoring.
+        await startApplyWith(location.href, readFormContext());
+        await runAutofill();
+      } else {
+        // POSTING. Read the JD here (the backend also enriches it from the ATS
+        // API when it's a known board); show the two actions. Navigation to the
+        // form is the user's next click, "Apply with autofill", not automatic.
+        await startApplyWith(location.href, readJobContext());
+      }
     } catch (e) {
       setApplyStatus(e.message, true);
     }
@@ -1539,7 +1602,12 @@
       $("applyStart").hidden = true;
       updateApplyButtons();
     } else {
+      // The entry button. On a bare FORM the whole flow is just autofill, so
+      // it says so and skips the posting's "read the ad first" step; on a
+      // posting it starts by reading the job (user request 2026-07-25).
       $("applyStart").hidden = false;
+      $("applyStart").textContent =
+        show === "form" ? "Apply with autofill" : "Apply to this job";
       $("applyBody").hidden = true;
       $("resumeAsk").hidden = true;
     }

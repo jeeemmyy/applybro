@@ -9,7 +9,22 @@ summarised rather than itemised — see [README](README.md#project-status).
 
 ## [Unreleased]
 
+### Changed
+- **The apply card knows which job it is by how you reached the form.** Reach a
+  form via *Apply with autofill* on a posting and it keeps that posting's
+  title / company / description — even across a new tab or a cross-domain
+  redirect. Open an application form *directly* and there is no job ad to read,
+  so the card is a single *Apply with autofill* that fills your profile answers
+  and leaves the rest — no job-description fields, no *Tailor* (nothing to
+  tailor against). Previously a directly-opened form scraped its own page text
+  as the "job description" (an application form read "Easy Apply Choose an
+  option…" as the JD) and offered tailoring against it.
+
 ### Fixed
+- **Company no longer reads as "Oneclick Ui".** SmartRecruiters one-click form
+  URLs put the company after `/company/` (`…/oneclick-ui/company/DeliveryHero/
+  publication/…`); the old parser took the first path segment. It now reads the
+  real company (DeliveryHero).
 - **Autofill-on-arrival works again when the form opens at a different URL.** A
   previous fix gated it behind an exact URL match, so when the ATS apply link
   jumped cross-domain or the ATS redirected (Delivery Hero's Apply →

@@ -117,14 +117,28 @@ careers list offers nothing but *Find Relevant Jobs*.
   There is no separate "Save" (every action saves first) and no "Save the
   job" — the dashboard records APPLICATIONS, not jobs. If you applied to the
   same job inside 90 days you get an advisory warning; it never blocks.
-- **On the application form** → the card shows *Autofill this step* for any
-  further pages of a multi-step form (the first step was filled on arrival).
-  Nothing is recorded until you click **I've applied**. As everywhere,
-  ApplyBro fills and highlights — **you review and submit**; nothing is ever
-  submitted for you.
+- **On the application form** → what the card offers depends on how you got
+  there, because that is what tells ApplyBro which job it is:
+  - **Reached via *Apply with autofill* on a posting** — the session carries
+    that posting's title / company / description, and keeps them: the card
+    shows the job you came from (never the form's own page text) and fills the
+    step on arrival. This holds even when the ATS opens the form in a new tab
+    or redirects across domains (Delivery Hero → jobs.smartrecruiters.com) —
+    whichever page carries the real form claims the session.
+  - **Opened directly** (you navigated straight to an application form) — there
+    is no job ad to read, so the card is just one **Apply with autofill**
+    button. It fills what your profile answers and leaves the rest for you;
+    there are no job-description fields to mistrust and no *Tailor* (nothing to
+    tailor against). To tailor, open the posting itself and start from there.
 
-An apply session in progress on a page that isn't its form is never mentioned
-at all — cancel it from the apply card on the form.
+  Either way, *Autofill this step* handles further pages of a multi-step form,
+  nothing is recorded until you click **I've applied**, and — as everywhere —
+  ApplyBro fills and highlights while **you review and submit**.
+
+A session for one job never shows on another job's page: it owns only its own
+posting and the form it opened, and stays silent everywhere else. On any other
+posting or form you simply get a fresh *Apply to this job* / *Apply with
+autofill*, which clears the earlier session.
 
 **Never-submit doctrine.** The extension fills forms and leaves them for you
 to submit. `apply.js` may not click ANYTHING. The single exception in the

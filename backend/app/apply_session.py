@@ -113,6 +113,13 @@ def _page_identity(url: str, page: Optional[dict]) -> Dict[str, str]:
     return {"title": title[:160], "company": (company or _host_company(url))[:120]}
 
 
+def _titlecase_slug(s: str) -> str:
+    """A URL slug as a company name. Keep an existing mixed case ("DeliveryHero"
+    stays), else title-case ("delivery-hero" -> "Delivery Hero")."""
+    name = s.replace("-", " ").replace("_", " ").strip()
+    return name if any(c.isupper() for c in name) else name.title()
+
+
 def _host_company(url: str) -> str:
     try:
         p = urlparse(url)
@@ -121,8 +128,18 @@ def _host_company(url: str) -> str:
         return ""
     if _ATS_HOST.search(host):
         seg = [x for x in p.path.split("/") if x]
-        if seg and seg[0].lower() not in ("jobs", "job", "apply", "embed"):
-            return seg[0].replace("-", " ").replace("_", " ").title()
+        # SmartRecruiters oneclick FORM urls put the company AFTER "company":
+        # jobs.smartrecruiters.com/oneclick-ui/company/DeliveryHero/publication/…
+        # — the first segment there is "oneclick-ui", which the old code read
+        # as the company ("Oneclick Ui", user report 2026-07-25).
+        low = [x.lower() for x in seg]
+        if "company" in low:
+            i = low.index("company")
+            if i + 1 < len(seg):
+                return _titlecase_slug(seg[i + 1])
+        if seg and low[0] not in ("jobs", "job", "apply", "embed",
+                                  "oneclick-ui", "oneclick", "publication"):
+            return _titlecase_slug(seg[0])
     parts = [x for x in host.split(".")
              if x not in ("www", "jobs", "careers", "boards", "job-boards",
                           "apply", "my", "com", "io", "co", "net", "org")]
