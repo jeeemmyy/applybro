@@ -9,6 +9,18 @@ summarised rather than itemised — see [README](README.md#project-status).
 
 ## [Unreleased]
 
+### Fixed
+- **Client-rendered application forms are recognised on sight.** A
+  SmartRecruiters one-click form (jobs.smartrecruiters.com/oneclick-ui/…) has
+  no fields in the DOM yet when ApplyBro reads the page, so it was misread as a
+  posting — the button said *Apply to this job* and neither the bare-form flow
+  nor autofill-on-arrival fired. An application-form URL (`/oneclick`,
+  `/apply`, `/application`) now counts as a form regardless of whether its
+  fields have rendered or sit in an iframe. And a page with a real JobPosting
+  schema is always a POSTING — even with the application form inline
+  (Greenhouse) — so it keeps its job description and *Tailor*, while a form
+  with no job ad is the bare flow.
+
 ### Changed
 - **Open-ended answers are tailored to the job AND the company, and are always
   written.** The answerer now gets the company as its own field and is told to

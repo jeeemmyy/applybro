@@ -1523,6 +1523,11 @@
   }
 
   const JOBISH_URL = /job|career|position|vacanc|opening|apply|greenhouse|lever\.co|smartrecruiters|workday|ashby|recruitee|workable|personio/i;
+  // A URL that is itself an application FORM — a whole ATS front-end (the
+  // fields may be client-rendered or inside an iframe, so the input count is
+  // not reliable). Matched as path segments so a posting slug like
+  // "/job/apply-now-swe" never counts.
+  const FORM_URL = /\/oneclick|\/apply(?:[/?#]|$)|\/application(?:s)?(?:[/?#]|$)/i;
   const ATS_HOST = /greenhouse\.io|lever\.co|myworkdayjobs\.com|smartrecruiters\.com|ashbyhq\.com|recruitee\.com|workable\.com|personio\.(de|com)|bamboohr\.com|icims\.com|jobvite\.com|teamtailor\.com/i;
 
   // The bubble is unsolicited UI on someone else's page, so it needs a STRONG
@@ -1552,20 +1557,23 @@
   function pageKind(p) {
     const listy = p.cards >= 3;
     const jobish = JOBISH_URL.test(location.hostname + location.pathname);
-    const formish = p.inputs >= 4 && (ATS_HOST.test(location.hostname) || jobish);
+    // A URL that IS an application form — regardless of whether its fields have
+    // rendered yet or sit in an iframe. A SmartRecruiters oneclick form is
+    // client-rendered, so at load `inputs` is 0 and the page was misclassified
+    // as a posting; the button read "Apply to this job" and the bare-form flow
+    // never triggered (user report 2026-07-25). The URL shape is deterministic.
+    const urlIsForm = FORM_URL.test(location.pathname + location.search);
+    const formish = urlIsForm ||
+      (p.inputs >= 4 && (ATS_HOST.test(location.hostname) || jobish));
 
-    // A JobPosting schema means this page is about ONE specific job — a schema
-    // a careers LIST never carries. It therefore wins over the card count:
-    // almost every ATS posting has a "similar jobs" rail (Delivery Hero's has
-    // 20), which made `cards >= 3` read a single posting as a list and offer
-    // the scan card instead of Apply (user report 2026-07-25). With the schema
-    // present, the page is that job's application form if it has the fields,
-    // else its ad — the related-jobs rail is neither.
-    if (p.hasPosting) return formish ? "form" : "posting";
-
-    // No single-job schema: fall back to structure. A form (many inputs on a
-    // jobish/ATS page) beats a list, but a filter-heavy careers search page is
-    // a LIST, so the card count still guards the form check here.
+    // A real job AD (JobPosting schema) is a POSTING — and it wins over the
+    // card count, because almost every ATS posting has a "similar jobs" rail
+    // (Delivery Hero's has 20) that would otherwise read as a list. It stays a
+    // posting even when the application form is inline on the same page, as
+    // Greenhouse renders it: the posting flow shows the JD, offers Tailor, and
+    // its "Apply with autofill" fills that inline form. Only a form with NO job
+    // ad is a bare FORM (SmartRecruiters oneclick), nothing to show or tailor.
+    if (p.hasPosting) return "posting";
     if (formish && !listy) return "form";
     if (listy) return "list";
     if (jobish || p.jobLinks > 0) return "posting";
@@ -1684,11 +1692,17 @@
       // ...but only claim the page that actually HAS the form. An ATS apply
       // link often lands on a redirect/intermediate page first (Delivery
       // Hero's /Workflow → jobs.smartrecruiters.com); consuming the flag there
-      // would leave the real form unfilled. Wait briefly for a client-rendered
-      // form, and if none appears, pass the flag on to the next page.
-      for (let i = 0; i < 5; i++) {
-        if (probePage().inputs >= 2) { arrivingAtForm = true; break; }
-        await new Promise((r) => setTimeout(r, 400));
+      // would leave the real form unfilled. A URL that IS a form (oneclick,
+      // /apply) counts immediately — its fields may be client-rendered or in an
+      // iframe, and applyDetect fills every frame anyway. Otherwise wait briefly
+      // for rendered fields, and if none appear, pass the flag to the next page.
+      if (FORM_URL.test(location.pathname + location.search)) {
+        arrivingAtForm = true;
+      } else {
+        for (let i = 0; i < 5; i++) {
+          if (probePage().inputs >= 2) { arrivingAtForm = true; break; }
+          await new Promise((r) => setTimeout(r, 400));
+        }
       }
       if (arrivingAtForm) {
         applyFormUrl = location.href;
