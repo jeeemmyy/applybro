@@ -553,12 +553,18 @@ def resolve_fields(url: str, fields: List[dict], cfg: Config,
                 "pending_ai": pending_ai}
     if questions:
         from ..tailoring import qa
+        sess = get_session()
+        company = str(sess.get("company") or "")
         job_text, resume_yaml = "", ""
         if not d:
-            sess = get_session()
+            # No tailoring workspace: hand the answerer the session's JD and the
+            # master resume directly, so open questions are STILL answered and
+            # tailored to the job + company (user request 2026-07-25). The JD
+            # is the posting's when the user came from one; empty on a bare
+            # form, where the role title + company + resume still carry it.
             job_text = "\n\n".join(x for x in (
-                f"# {sess.get('job_title') or ''} at {sess.get('company') or ''}".strip(" #"),
-                sess.get("description") or "") if x)
+                f"Role: {sess.get('job_title') or ''}".strip(" :"),
+                sess.get("description") or "") if x.strip(" Role:"))
             try:
                 from ..paths import CONTENT_YAML
                 with open(CONTENT_YAML) as fh:
@@ -568,7 +574,7 @@ def resolve_fields(url: str, fields: List[dict], cfg: Config,
         ok, res = qa.answer_questions(
             d, [{k: q[k] for k in ("match", "question", "kind", "maxlength")}
                 for q in questions],
-            job_text=job_text, resume_yaml=resume_yaml)
+            job_text=job_text, resume_yaml=resume_yaml, company=company)
         if ok:
             by_match = {a["match"]: a["answer"] for a in res}
             for q in questions:
@@ -576,7 +582,8 @@ def resolve_fields(url: str, fields: List[dict], cfg: Config,
                     values[q["_fid"]] = {"value": by_match[q["match"]],
                                          "source": "ai"}
                 else:
-                    leave(q["_fid"], "the AI couldn't answer it truthfully from your resume")
+                    leave(q["_fid"], "needs a specific fact not in your resume "
+                                     "or profile — answer it yourself")
         else:
             # AI unavailable or errored — the questions stay for the human,
             # never a guessed answer on a real application.

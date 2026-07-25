@@ -43,6 +43,10 @@ _DEFAULT_GUIDANCE = "2-5 sentences unless the question clearly asks for more"
 _PROMPT = """You are answering questions on a job application form on behalf
 of the candidate, in the candidate's first-person voice.
 
+# The company
+
+{company}
+
 # The job (description, fit evidence, salary estimate if present)
 
 {job_md}
@@ -70,14 +74,24 @@ of the candidate, in the candidate's first-person voice.
 {questions}
 
 Rules — these protect the candidate from lying on a real application:
-- TRUTH ONLY. Every claim must be supported by the resume or the candidate
-  facts above. Never invent experience, skills, tools, numbers, employers,
-  or preferences. Never inflate scope or seniority.
-- If a question cannot be answered truthfully from the material — it asks
-  about something the candidate doesn't have, or personal data not present
-  (an ID, a reference's contact, a certification) — answer "" for it.
-- Be specific and concrete: {guidance}. Mirror the job's own vocabulary
-  where truthful. No filler openings like "I am writing to express...".
+- TRUTH ABOUT FACTS. Never invent experience, skills, tools, numbers,
+  employers, dates, certifications, or credentials the resume and profile
+  don't show. Never inflate scope or seniority.
+- ALWAYS ANSWER motivation, interest, and fit questions — "why this company",
+  "why this role", "what excites you about this opportunity", "which of our
+  values resonates", "what would you bring", cover-letter boxes. These ask for
+  the candidate's genuine perspective, which is answerable from their REAL
+  background plus this job and company: connect a specific real strength or
+  experience from the resume to what THIS role at THIS company actually does.
+  Name the company and reflect the job description's own focus and language.
+  Never leave one of these blank — a tailored, honest answer is the whole
+  point.
+- Answer "" ONLY when a question needs a specific FACT the candidate does not
+  have — an ID or reference's contact details, a certification, a number the
+  resume doesn't state. Never "" for an opinion, motivation, or fit question.
+- Be specific and concrete: {guidance}. Mirror the job's and company's own
+  vocabulary where truthful. No filler openings like "I am writing to
+  express...".
 - Respect any "max N chars" limit on a question — stay comfortably under it.
 - Salary questions: use the salary estimate from the job info verbatim if
   one is present, else "".
@@ -125,7 +139,8 @@ def _style_guidance(profile_path: str) -> str:
 
 def answer_questions(workdir: Optional[str], questions: List[dict],
                      profile_path: str = PROFILE_YAML,
-                     job_text: str = "", resume_yaml: str = "") -> Tuple[bool, object]:
+                     job_text: str = "", resume_yaml: str = "",
+                     company: str = "") -> Tuple[bool, object]:
     """Generate grounded answers for the given open questions. On success
     returns (True, [{match, answer}, ...]) — persisted into the workspace's
     answers.yaml when there IS a workspace. On failure returns (False,
@@ -153,7 +168,10 @@ def answer_questions(workdir: Optional[str], questions: List[dict],
         return False, "no job description or resume to ground answers in"
 
     prompt = _PROMPT.format(
-        job_md=job_md[:20000],
+        company=company.strip() or "(not stated on the form — infer from the "
+                                   "job text if it names the company)",
+        job_md=job_md[:20000] or "(no separate description — tailor from the "
+                                 "role title, the company, and the resume)",
         resume_yaml=resume[:20000],
         profile_yaml=_read(profile_path)[:8000],
         answers_yaml=prepared[:6000],

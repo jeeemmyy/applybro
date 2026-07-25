@@ -10,6 +10,16 @@ summarised rather than itemised — see [README](README.md#project-status).
 ## [Unreleased]
 
 ### Changed
+- **Open-ended answers are tailored to the job AND the company, and are always
+  written.** The answerer now gets the company as its own field and is told to
+  ALWAYS answer motivation/interest/fit questions ("why this company", "what
+  excites you", "which value resonates") by connecting a real strength from
+  your resume to what this role at this company does — naming the company and
+  mirroring the job's language. It leaves a question blank only when it needs a
+  specific fact your resume/profile don't hold. Previously the prompt let it
+  answer "" whenever the material felt thin, so those questions came back
+  empty; and when you applied without tailoring, the company wasn't passed at
+  all.
 - **The apply card knows which job it is by how you reached the form.** Reach a
   form via *Apply with autofill* on a posting and it keeps that posting's
   title / company / description — even across a new tab or a cross-domain
