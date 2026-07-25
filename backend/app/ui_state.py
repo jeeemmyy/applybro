@@ -18,7 +18,15 @@ _DEFAULTS: Dict[str, Any] = {
 def load() -> Dict[str, Any]:
     from .. import store
     if store.enabled():
-        d = store.kv_get("ui_state")
+        # Reading an ephemeral UI preference must never crash a caller. When
+        # the Supabase session has expired, kv_get raises "Not signed in" —
+        # which used to bubble all the way up and turn a scan into a 500 ASGI
+        # crash (user report 2026-07-25). The threshold has a sane default; use
+        # it. Endpoints that actually REQUIRE sign-in enforce that themselves.
+        try:
+            d = store.kv_get("ui_state")
+        except RuntimeError:
+            d = {}
     elif not os.path.exists(STATE_FILE):
         d = {}
     else:

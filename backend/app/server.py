@@ -470,6 +470,7 @@ def extension_save_job(body: CapturedPage) -> dict:
     """Path A — save the single job posting the user is looking at."""
     from .scan import save_single_job
     cfg = require_config()
+    require_signed_in()
     try:
         entry = save_single_job(body.dict(), cfg)
     except ValueError as e:
@@ -478,12 +479,25 @@ def extension_save_job(body: CapturedPage) -> dict:
                     ("url", "company", "title", "location", "score", "ai_reason")}}
 
 
+def require_signed_in() -> None:
+    """Fail FAST with a clean 401 when Supabase is on but the session has
+    expired. Without this a scan ran the whole AI pipeline and then couldn't
+    save, or crashed with a 500 when a store read (ui_state) rethrew "Not
+    signed in" (user report 2026-07-25). The extension shows the detail."""
+    from .. import store
+    if store.enabled() and not store.logged_in():
+        raise HTTPException(401,
+            "Your ApplyBro session has expired — sign in again on the "
+            "dashboard, then re-run this.")
+
+
 @app.post("/api/extension/scan")
 def extension_scan(body: CapturedPage) -> dict:
     """Path B — scan the careers-page listing the user has filtered/rendered.
     Returns a scan id; the extension polls /api/extension/scan/{id}."""
     from .scan import start_scan
     cfg = require_config()
+    require_signed_in()   # staging needs the account — don't spend AI to fail
     state = ui_state.load()
     threshold = int(state.get("fit_threshold", 60))
     return {"scan_id": start_scan(body.dict(), cfg, threshold)}
@@ -578,6 +592,7 @@ def apply_session_state() -> dict:
 def apply_start(body: ApplyStart) -> dict:
     from .apply_session import start_session, SessionBusy
     cfg = require_config()
+    require_signed_in()   # start_session writes the one-application lock
     threshold = int(ui_state.load().get("fit_threshold", 60))
     try:
         return start_session(body.url, cfg, threshold, page={

@@ -10,6 +10,13 @@ summarised rather than itemised — see [README](README.md#project-status).
 ## [Unreleased]
 
 ### Fixed
+- **An expired session crashed the scan with a 500 instead of asking you to
+  sign in.** Scanning reads the fit threshold via `ui_state.load()`, which
+  called Supabase and rethrew "Not signed in" — an unhandled 500 ASGI
+  traceback. Reading an ephemeral preference now degrades to its default, and
+  the scan / save-job / apply-start endpoints fail FAST with a clean 401
+  ("Your ApplyBro session has expired — sign in again") rather than running
+  the whole AI pipeline and then failing to save.
 - **The resume now actually attaches.** `which=master` only served a resume
   *uploaded* to your account, so it 404'd for anyone whose resume is built from
   `content.yaml` — and the panel then blamed the ATS ("the upload field may not
