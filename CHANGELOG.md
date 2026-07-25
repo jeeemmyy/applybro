@@ -10,6 +10,22 @@ summarised rather than itemised — see [README](README.md#project-status).
 ## [Unreleased]
 
 ### Fixed
+- **A leftover apply session no longer hijacks other jobs' pages.** A session
+  bound to job X used to show X's title/company/description — and an "I've
+  applied / Cancel" — on ANY posting or form, so a stale Intercom session
+  filled the panel while you stood on a Delivery Hero form. A session now
+  "owns" only its own posting and the form it navigated to (tracked
+  explicitly); on any other job's page it stays silent and the card offers a
+  single "Apply to this job", which clears the leftover session and starts
+  fresh here. The confusing "cancels the one in progress" switch button is
+  gone.
+- **A job posting with a "similar jobs" rail is no longer mistaken for a
+  careers list.** Almost every ATS posting has 3+ related-job cards (Delivery
+  Hero's has 20), which tripped the structural list detector and offered
+  *Find Relevant Jobs* instead of *Apply to this job*. A page carrying a
+  JobPosting schema — which a careers list never has — is now classified as
+  that one job regardless of the related-jobs rail. Verified across eight page
+  shapes with no list/form regressions.
 - **An expired session crashed the scan with a 500 instead of asking you to
   sign in.** Scanning reads the fit threshold via `ui_state.load()`, which
   called Supabase and rethrew "Not signed in" — an unhandled 500 ASGI

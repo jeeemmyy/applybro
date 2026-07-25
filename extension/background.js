@@ -835,8 +835,24 @@ async function setApplyUrl(url) {
   if (url) {
     await chrome.storage.session.set({ applyUrl: url });
   } else {
-    await chrome.storage.session.remove(["applyUrl", "applyContext", "autofillPending"]);
+    await chrome.storage.session.remove(
+      ["applyUrl", "applyContext", "autofillPending", "applyFormUrl"]);
   }
+  return { ok: true };
+}
+
+// The application FORM's URL, distinct from the posting (applyUrl). A session
+// "owns" only its own posting and this form; on any OTHER job's page it stays
+// silent instead of showing the wrong job's data (user report 2026-07-25:
+// a leftover Intercom session filled the panel on a DeliveryHero form).
+async function getApplyFormUrl() {
+  const v = await chrome.storage.session.get(["applyFormUrl"]);
+  return v.applyFormUrl || null;
+}
+
+async function setApplyFormUrl(url) {
+  if (url) await chrome.storage.session.set({ applyFormUrl: url });
+  else await chrome.storage.session.remove("applyFormUrl");
   return { ok: true };
 }
 
@@ -992,6 +1008,7 @@ async function handle(msg, sender) {
       return { scanActive: !!scan,
                scanHere: !!(scan && scan.tabId === tabId),
                applyUrl: await getApplyUrl(),
+               applyFormUrl: await getApplyFormUrl(),
                applyContext: await getApplyContext(),
                autofillPending: await getAutofillPending() };
     }
@@ -1001,6 +1018,7 @@ async function handle(msg, sender) {
     case "stopScan":    return stopScan();
     case "setApplyUrl": return setApplyUrl(msg.url || null);
     case "setApplyContext": return setApplyContext(msg.ctx || null);
+    case "setApplyFormUrl": return setApplyFormUrl(msg.url || null);
     case "setAutofillPending": return setAutofillPending(!!msg.on);
     case "applyDetect": return applyDetect(tabId);
     case "applyFill":   return applyFill(tabId, msg.values, msg.unresolved);

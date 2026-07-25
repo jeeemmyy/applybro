@@ -866,6 +866,17 @@
   let applyTailored = false;   // has THIS session's job been tailored yet?
   let pendingAttach = [];      // resume file-input fids awaiting the user's choice
   let filledOnce = false;      // has a fill run on THIS page? (drives the card's phase)
+  let applyFormUrl = null;     // the session's own application-form URL
+
+  // Does the ACTIVE session belong to the page we're on? A session owns its
+  // posting (applyUrl) and the form it navigated to (applyFormUrl) — and
+  // nowhere else. On a different job's posting or form it must stay silent,
+  // not show that job's title/company/description (user report 2026-07-25).
+  function sessionOwnsPage() {
+    if (!sessionActive) return false;
+    return sameUrl(location.href, applyUrl) ||
+           !!(applyFormUrl && sameUrl(location.href, applyFormUrl));
+  }
 
   function setApplyStatus(msg, isErr) {
     $("applyStatus").textContent = msg;
@@ -995,6 +1006,19 @@
   async function beginApply() {
     setApplyStatus("");
     try {
+      // A leftover session for a DIFFERENT job would 409 the start and, worse,
+      // was showing that job's details on this page. Clear it first, so "Apply
+      // to this job" always applies to THIS job (user report 2026-07-25).
+      if (sessionActive && !sessionOwnsPage()) {
+        try {
+          await api("/api/extension/apply/finish", {
+            method: "POST",
+            body: JSON.stringify({ url: applyUrl, outcome: "cancelled" }) });
+        } catch (e) { /* already gone — fine */ }
+        await bg({ type: "setApplyUrl", url: null });
+        applyUrl = null; applyFormUrl = null; sessionActive = false;
+        applyTailored = false; filledOnce = false;
+      }
       // Read the JD HERE, on the posting (the backend also enriches it from
       // the ATS API when it's a known board). This only STARTS the session and
       // shows the two actions — navigation to the form is the user's next
@@ -1033,6 +1057,8 @@
       await saveContextImplicit();
       const href = findApplyHref();
       if (href && !sameUrl(href, location.href)) {
+        applyFormUrl = href;                  // this session now owns the form
+        await bg({ type: "setApplyFormUrl", url: href });
         await bg({ type: "setAutofillPending", on: true });
         setApplyStatus("Opening the application form — I'll fill it there…");
         location.href = href;                 // navigation only
@@ -1055,6 +1081,7 @@
       });
       await bg({ type: "setApplyUrl", url: null });
       applyUrl = null;
+      applyFormUrl = null;
       sessionActive = false;
       applyTailored = false;
       filledOnce = false;
@@ -1086,6 +1113,8 @@
         `Opening the form…`);
       const href = findApplyHref();
       if (href && !sameUrl(href, location.href)) {
+        applyFormUrl = href;
+        await bg({ type: "setApplyFormUrl", url: href });
         await bg({ type: "setAutofillPending", on: true });
         location.href = href;                 // navigation only
       } else {
@@ -1216,6 +1245,13 @@
       fpMark(Object.keys(fast.values || {}), "done");
       fpMark(fast.unresolved || [], "skip", fast.unresolved_why || {});
       filledOnce = true;
+      // Filling here proves this IS the session's form, even if the ATS
+      // redirected to a URL we didn't predict — claim it so a reload keeps
+      // the card here and not on some other job.
+      if (!applyFormUrl || !sameUrl(applyFormUrl, location.href)) {
+        applyFormUrl = location.href;
+        bg({ type: "setApplyFormUrl", url: location.href }).catch(() => {});
+      }
       updateApplyButtons();
 
       // 2b. AI pass — the open questions, marked "writing…" while they run.
@@ -1352,6 +1388,7 @@
     $("resumeAsk").hidden = true;
     setApplyStatus("");
     applyUrl = null;
+    applyFormUrl = null;
     sessionActive = false;
     applyTailored = false;
     pendingAttach = [];
@@ -1450,17 +1487,24 @@
   //   form    — an application form (fields to fill)
   //   other   — not a job surface at all
   function pageKind(p) {
-    // A page that LISTS jobs wins over everything except a form: a posting
-    // page shows one job, a list shows many, and the structural card count
-    // is what tells them apart on any site.
-    const listy = p.cards >= 3 || p.jobLinks > 5;
+    const listy = p.cards >= 3;
     const jobish = JOBISH_URL.test(location.hostname + location.pathname);
-    if (p.inputs >= 4 && (ATS_HOST.test(location.hostname) || jobish) && !listy) {
-      return "form";
-    }
-    if (p.hasPosting && !listy) return "posting";
+    const formish = p.inputs >= 4 && (ATS_HOST.test(location.hostname) || jobish);
+
+    // A JobPosting schema means this page is about ONE specific job — a schema
+    // a careers LIST never carries. It therefore wins over the card count:
+    // almost every ATS posting has a "similar jobs" rail (Delivery Hero's has
+    // 20), which made `cards >= 3` read a single posting as a list and offer
+    // the scan card instead of Apply (user report 2026-07-25). With the schema
+    // present, the page is that job's application form if it has the fields,
+    // else its ad — the related-jobs rail is neither.
+    if (p.hasPosting) return formish ? "form" : "posting";
+
+    // No single-job schema: fall back to structure. A form (many inputs on a
+    // jobish/ATS page) beats a list, but a filter-heavy careers search page is
+    // a LIST, so the card count still guards the form check here.
+    if (formish && !listy) return "form";
     if (listy) return "list";
-    if (p.hasPosting) return "posting";
     if (jobish || p.jobLinks > 0) return "posting";
     return "other";
   }
@@ -1471,32 +1515,37 @@
   function refreshContext() {
     const p = probePage();
     const kind = pageKind(p);
+    // Does the ACTIVE session belong to THIS page? Only then does its bound
+    // card (with the job's title/company/description and I've-applied/Cancel)
+    // belong here. On any other job's posting/form the session is silent and
+    // the page is judged on its own.
+    const owns = sessionOwnsPage();
     let show = kind;
     if (scanActive) show = "list";
-    else if (sessionActive &&
-             (kind === "posting" || kind === "form" || location.href === applyUrl)) {
-      show = "form";
-    }
+    else if (owns) show = "form";
+
     $("scanCard").hidden = show !== "list";
     $("applyCard").hidden = !(show === "form" || show === "posting");
     $("notJobHint").hidden = show !== "other";
-    // An apply session that isn't showing its card stays SILENT here — the
-    // "application in progress" line was noise on a careers page (user
-    // request 2026-07-21: "Remove. Never show."). It's cancellable from the
-    // apply card on the form itself, and from the dashboard.
-    // While a session is bound, plain "Apply to this job" can only 409 —
-    // replace it with an explicit switch (user report 2026-07-19: "This job
-    // is different"). Same-page check keeps it off the session's own pages.
-    $("applyStart").hidden = sessionActive;
-    $("switchApply").hidden = !(sessionActive && location.href !== applyUrl);
-    if (sessionActive) updateApplyButtons();   // keep the two-phase buttons right
-    // INVARIANT: the apply card never renders with nothing to press. A session
-    // whose UI failed to bind used to hide "Apply to this job" (because a
-    // session is active) while its body stayed hidden too — leaving no action
-    // and no way to cancel (user report 2026-07-24). Whatever the cause, put
-    // an action back.
+
+    // The bound session body shows ONLY on the session's own page. Everywhere
+    // else — including a DIFFERENT job's posting or form — the card offers a
+    // single clean "Apply to this job", which starts fresh here (cancelling
+    // any leftover session, see beginApply). The old "switch" button and its
+    // "cancels the one in progress" wording confused a user who never knew a
+    // session was open (user report 2026-07-25); it's gone.
+    $("switchApply").hidden = true;
+    if (owns) {
+      $("applyStart").hidden = true;
+      updateApplyButtons();
+    } else {
+      $("applyStart").hidden = false;
+      $("applyBody").hidden = true;
+      $("resumeAsk").hidden = true;
+    }
+    // INVARIANT: the apply card never renders with nothing to press.
     if (!$("applyCard").hidden && $("applyBody").hidden
-        && $("applyStart").hidden && $("switchApply").hidden) {
+        && $("applyStart").hidden) {
       $("applyStart").hidden = false;
     }
     // The bubble is unsolicited UI on someone else's page: strong signal only.
@@ -1537,6 +1586,7 @@
     // a scan must not light up every other page the user opens meanwhile.
     scanActive = !!state.scanHere;
     applyUrl = state.applyUrl || null;
+    applyFormUrl = state.applyFormUrl || null;
     if (!applyUrl) {
       // The BACKEND may hold an application lock the extension lost track of
       // (Chrome restart, extension reload). Without this check the panel
@@ -1556,31 +1606,33 @@
     // apply session plausibly continues on (the job's own page, or a job-ish
     // page like the ATS form it navigated to). A lingering session opening
     // the panel on Twitter/Gmail was the 2026-07-19 regression.
-    if (scanActive || (sessionActive && (jobish || location.href === applyUrl))) {
+    if (scanActive || (sessionActive && (jobish || sessionOwnsPage()))) {
       showPanel(true);
     }
     if (scanActive) startPolling();
-    if (sessionActive) {
+    // Only re-bind the session UI on a page the session actually OWNS. On a
+    // different job's posting/form the session must stay silent — restoring it
+    // there is exactly what showed the wrong job's data (user report
+    // 2026-07-25). Those pages just show "Apply to this job".
+    if (sessionActive && sessionOwnsPage()) {
       // Re-bind the apply UI to the stored job (start is idempotent — it
       // re-returns the session's fit/tailored state). This can take a couple
-      // of seconds when the description is refetched from the ATS API, and
-      // "Apply to this job" is ALREADY hidden by refreshContext because a
-      // session is active — so say what's happening rather than showing a
-      // card with no buttons (user report 2026-07-24).
+      // of seconds when the description is refetched from the ATS API, so say
+      // what's happening rather than showing a card with no buttons.
       setApplyStatus("Restoring the application in progress…");
       try {
         startedUI(await api("/api/extension/apply/start", {
           method: "POST", body: JSON.stringify({ url: applyUrl }) }));
         setApplyStatus("");
       } catch (e) {
-        // The old comment here claimed "the Apply button still works
-        // manually". It does not — it is hidden. Leaving it at that gave a
-        // card with nothing to press and no way to cancel. Offer the escape
-        // hatch that CAN clear a stuck session, and say why.
-        $("switchApply").hidden = false;
+        // Binding failed — don't strand the card. Fall back to the fresh
+        // "Apply to this job" action (beginApply clears the stuck session and
+        // starts over) and say why.
+        $("applyStart").hidden = false;
+        $("applyBody").hidden = true;
         setApplyStatus(
           `Couldn't restore the application in progress — ${e.message}. ` +
-          `Use the button above to cancel it and start this one fresh.`, true);
+          `Press "Apply to this job" to start it fresh.`, true);
       }
       // Arrived on the application form because the user pressed "Apply with
       // autofill" (or "Tailor first") on the posting — fill this first step
