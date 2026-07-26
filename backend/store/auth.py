@@ -41,8 +41,14 @@ def _auth_req(path: str, body: dict) -> dict:
     try:
         r = _session().post(f"{c['url']}/auth/v1/{path}", json=body,
                             headers={"apikey": c["key"]}, timeout=_TIMEOUT)
-    except requests.RequestException as e:
-        raise RuntimeError(f"Couldn't reach Supabase: {type(e).__name__}")
+    except requests.RequestException:
+        # This already retried with backoff (see _session), so reaching here
+        # means the network was down for the whole attempt — not a bad password
+        # or a dead project. Say so in words the user can act on, rather than a
+        # bare "ConnectionError" on the sign-in screen (user report 2026-07-26).
+        raise RuntimeError(
+            "Couldn't reach the sign-in server — check your internet "
+            "connection and try again.")
     if r.status_code >= 400:
         try:
             j = r.json()
